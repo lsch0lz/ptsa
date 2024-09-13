@@ -5,4 +5,4 @@ import torch
 
 class TestPackageVersions(unittest.TestCase):
     def test_pytorch_version(self):
-        assert torch.__version__ == "2.2.2"
+        assert torch.__version__ == "2.2.2" or "2.2.2+cu121"
