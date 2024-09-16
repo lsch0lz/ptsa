@@ -4,54 +4,62 @@ import torch.nn.functional as F
 
 
 class BayesianLSTM(nn.Module):
-    def __init__(self, n_features, output_length, batch_size):
+    def __init__(self, input_dim, hidden_dim, output_dim, batch_size, depth=1, dropout=0.5, rec_dropout=0.0):
         super(BayesianLSTM, self).__init__()
+        self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
+        self.output_dim = output_dim
         self.batch_size = batch_size
-        self.hidden_size_1 = 128
-        self.hidden_size_2 = 32
-        self.stacked_layers = 2
-        self.dropout_probability = 0.5
+        self.depth = depth
+        self.dropout = dropout
+        self.rec_dropout = rec_dropout
 
-        self.lstm1 = nn.LSTM(n_features,
-                             self.hidden_size_1,
-                             num_layers=self.stacked_layers,
-                             batch_first=True)
-        self.lstm2 = nn.LSTM(self.hidden_size_1,
-                             self.hidden_size_2,
-                             num_layers=self.stacked_layers,
-                             batch_first=True)
+        self.input_layer = nn.Linear(input_dim, hidden_dim)
+        self.lstm_layers = nn.ModuleList([
+            nn.LSTM(hidden_dim, hidden_dim, dropout=rec_dropout, batch_first=True)
+            for _ in range(depth)
+        ])
 
-        self.fc = nn.Linear(self.hidden_size_2, output_length)
+        self.output_layer = nn.Linear(hidden_dim, output_dim)
+        self.dropout_layer = nn.Dropout(dropout)
         self.loss_fn = nn.MSELoss()
 
-    def forward(self, x) -> Tensor:
+    def forward(self, x: Tensor, mask: Tensor = None) -> Tensor:
         batch_size, seq_len, _ = x.size()
+        x = self.input_layer(x)
+        for lstm in self.lstm_layers:
+            x, _ = lstm(x)
+            x = self.dropout_layer(x)
 
-        hidden: [Tensor, Tensor] = self.init_hidden1(batch_size)
-        output, _ = self.lstm1(x, hidden)
-        output: Tensor = F.dropout(output, p=self.dropout_probability, training=True)
-        state: [Tensor, Tensor] = self.init_hidden2(batch_size)
-        output, state = self.lstm2(output, state)
-        output_dropout: Tensor = F.dropout(output, p=self.dropout_probability, training=True)
-        output_last_cell: Tensor = output_dropout[:, -1, :]  # take the last decoder cell's outputs
-        y_prediction: Tensor = self.fc(output_last_cell)
+        if mask is not None:
+            x = x * mask.unsqueeze(-1)
 
-        return y_prediction
+        if mask is not None:
+            last_timestep = mask.sum(dim=1) - 1
+            last_timestep = last_timestep.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, self.hidden_dim)
+            x = x.gather(1, last_timestep).squeeze(1)
+        else:
+            x = x[:, -1, :]
 
-    def init_hidden1(self, batch_size) -> [Tensor, Tensor]:
-        hidden_state: Tensor = torch.zeros(self.stacked_layers, batch_size, self.hidden_size_1)
-        cell_state: Tensor = torch.zeros(self.stacked_layers, batch_size, self.hidden_size_1)
+        y_pred = self.output_layer(x)
+        y_pred = F.relu(y_pred)
 
-        return hidden_state, cell_state
+        return y_pred
 
-    def init_hidden2(self, batch_size) -> [Tensor, Tensor]:
-        hidden_state: Tensor = torch.zeros(self.stacked_layers, batch_size, self.hidden_size_2)
-        cell_state: Tensor = torch.zeros(self.stacked_layers, batch_size, self.hidden_size_2)
-
-        return hidden_state, cell_state
-
-    def loss(self, pred, truth) -> Tensor:
+    def loss(self, pred: Tensor, truth: Tensor) -> Tensor:
         return self.loss_fn(pred, truth)
 
-    def predict(self, X) -> Tensor:
-        return self(torch.tensor(X, dtype=torch.float32)).view(-1).detach().numpy()
+    def predict(self, X: Tensor, mask: Tensor = None, num_samples: int = 100) -> [Tensor, Tensor]:
+        self.train()
+        predictions = []
+
+        for _ in range(num_samples):
+            with torch.no_grad():
+                pred = self(X, mask)
+            predictions.append(pred)
+
+        predictions = torch.stack(predictions, dim=0)
+        mean_pred = predictions.mean(dim=0)
+        std_pred = predictions.std(dim=0)
+
+        return mean_pred, std_pred
