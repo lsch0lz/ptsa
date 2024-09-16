@@ -31,6 +31,8 @@ setup(
         "typing-extensions",
         "pre-commit",
         "types-tqdm",
+        "pandas==2.2.2",
+        ""
     ],
         'testing': [
             "pytest"]
