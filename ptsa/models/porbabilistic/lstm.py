@@ -4,62 +4,70 @@ import torch.nn.functional as F
 
 
 class BayesianLSTM(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim, batch_size, depth=1, dropout=0.5, rec_dropout=0.0):
+    def __init__(self, input_dim, batch_size, output_length, hidden_dim, hidden_size_2, num_layers, dropout, device):
         super(BayesianLSTM, self).__init__()
-        self.input_dim = input_dim
-        self.hidden_dim = hidden_dim
-        self.output_dim = output_dim
         self.batch_size = batch_size
-        self.depth = depth
+        self.hidden_size_1 = hidden_dim
+        self.hidden_size_2 = hidden_size_2
+        self.num_layers = num_layers
         self.dropout = dropout
-        self.rec_dropout = rec_dropout
+        self.device = device
 
-        self.input_layer = nn.Linear(input_dim, hidden_dim)
-        self.lstm_layers = nn.ModuleList([
-            nn.LSTM(hidden_dim, hidden_dim, dropout=rec_dropout, batch_first=True)
-            for _ in range(depth)
-        ])
-
-        self.output_layer = nn.Linear(hidden_dim, output_dim)
-        self.dropout_layer = nn.Dropout(dropout)
+        self.lstm1 = nn.LSTM(input_dim,
+                             self.hidden_size_1,
+                             num_layers=self.num_layers,
+                             batch_first=True)
+        self.lstm2 = nn.LSTM(self.hidden_size_1,
+                             self.hidden_size_2,
+                             num_layers=self.num_layers,
+                             batch_first=True)
+        self.fc = nn.Linear(self.hidden_size_2, output_length)
         self.loss_fn = nn.MSELoss()
 
-    def forward(self, x: Tensor, mask: Tensor = None) -> Tensor:
+        self.to(device)
+
+    def forward(self, x):
+        # Ensure input is on the correct device
+        x = x.to(self.device)
+
         batch_size, seq_len, _ = x.size()
-        x = self.input_layer(x)
-        for lstm in self.lstm_layers:
-            x, _ = lstm(x)
-            x = self.dropout_layer(x)
-
-        if mask is not None:
-            x = x * mask.unsqueeze(-1)
-
-        if mask is not None:
-            last_timestep = mask.sum(dim=1) - 1
-            last_timestep = last_timestep.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, self.hidden_dim)
-            x = x.gather(1, last_timestep).squeeze(1)
-        else:
-            x = x[:, -1, :]
-
-        y_pred = self.output_layer(x)
-        y_pred = F.relu(y_pred)
-
+        hidden = self.init_hidden1(batch_size)
+        output, _ = self.lstm1(x, hidden)
+        output = F.dropout(output, p=self.dropout, training=self.training)
+        state = self.init_hidden2(batch_size)
+        output, state = self.lstm2(output, state)
+        output = F.dropout(output, p=self.dropout, training=self.training)
+        output = output[:, -1, :]  # take the last decoder cell's outputs
+        y_pred = self.fc(output)
         return y_pred
 
-    def loss(self, pred: Tensor, truth: Tensor) -> Tensor:
+    def init_hidden1(self, batch_size):
+        hidden_state = torch.zeros(self.num_layers, batch_size, self.hidden_size_1, device=self.device)
+        cell_state = torch.zeros(self.num_layers, batch_size, self.hidden_size_1, device=self.device)
+        return (hidden_state, cell_state)
+
+    def init_hidden2(self, batch_size):
+        hidden_state = torch.zeros(self.num_layers, batch_size, self.hidden_size_2, device=self.device)
+        cell_state = torch.zeros(self.num_layers, batch_size, self.hidden_size_2, device=self.device)
+        return (hidden_state, cell_state)
+
+    def loss(self, pred, truth):
+        # Ensure both pred and truth are on the correct device
+        pred = pred.to(self.device)
+        truth = truth.to(self.device)
         return self.loss_fn(pred, truth)
 
-    def predict(self, X: Tensor, mask: Tensor = None, num_samples: int = 100) -> [Tensor, Tensor]:
-        self.train()
-        predictions = []
+    def predict(self, X: Tensor, num_samples: int = 100) -> [Tensor, Tensor]:
+        self.train()  # Ensure dropout is active
+        # Ensure input is on the correct device
+        X = X.to(self.device)
 
+        predictions = []
         for _ in range(num_samples):
             with torch.no_grad():
-                pred = self(X, mask)
+                pred = self(X)
             predictions.append(pred)
-
         predictions = torch.stack(predictions, dim=0)
         mean_pred = predictions.mean(dim=0)
         std_pred = predictions.std(dim=0)
-
         return mean_pred, std_pred

@@ -19,7 +19,7 @@ setup(
     long_description=long_description,
     long_description_content_type='text/markdown',
     packages=find_packages(),
-    install_requires=["numpy==1.26.4", "tqdm", "torch==2.2.2"],
+    install_requires=["numpy==1.26.4", "tqdm", "torch==2.2.2", "scikit-learn"],
 
     keywords=['python'],
     classifiers=[
