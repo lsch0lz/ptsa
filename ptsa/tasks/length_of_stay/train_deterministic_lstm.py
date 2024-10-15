@@ -4,7 +4,8 @@ import argparse
 import torch
 from torch import nn
 from sklearn.model_selection import train_test_split
-
+import wandb
+import numpy as np
 
 from ptsa.tasks.readers import LengthOfStayReader
 from ptsa.tasks.length_of_stay.utils import BatchGen
@@ -33,21 +34,25 @@ parser.add_argument('--num_train_samples', type=int, default=None, help='Number 
 
 args = parser.parse_args()
 
-# Hyperparameters
-input_size = 76  # Number of features in your input data
-hidden_size = 64
-num_layers = 2
-learning_rate = 0.001
-num_epochs = 50
-batch_size = 128
+config = {
+    "input_size": 76,
+    "hidden_size": 64,
+    "num_layers": 2,
+    "learning_rate": 0.001,
+    "num_epochs": 20,
+    "batch_size": 64,
+    "dropout": 0.2
+}
+
+wandb.init(project="deterministic_lstm_los", config=config)
 
 device = "cuda" if torch.cuda.is_available() else "cpu" 
 
-model = LSTM(input_size, hidden_size, num_layers).to(device)
+model = LSTM(config["input_size"], config["hidden_size"], config["num_layers"], config["dropout"]).to(device)
 
 # Loss and optimizer
 criterion = nn.MSELoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"])
 
 # data loading
 all_data = LengthOfStayReader(dataset_dir=os.path.join(args.data, 'train'),
@@ -89,7 +94,7 @@ normalizer.load_params(normalizer_state)
 train_data_gen = BatchGen(reader=train_reader,
                             discretizer=discretizer,
                             normalizer=normalizer,
-                            batch_size=batch_size,
+                            batch_size=config["batch_size"],
                             steps=None,
                             shuffle=True,
                             partition=args.partition)
@@ -97,7 +102,7 @@ train_data_gen = BatchGen(reader=train_reader,
 val_data_gen = BatchGen(reader=val_reader,
                         discretizer=discretizer,
                         normalizer=normalizer,
-                        batch_size=batch_size,
+                        batch_size=config["batch_size"],
                         steps=None,
                         shuffle=False,
                         partition=args.partition)
@@ -105,14 +110,15 @@ val_data_gen = BatchGen(reader=val_reader,
 test_data_gen = BatchGen(reader=test_reader,
                             discretizer=discretizer,
                             normalizer=normalizer,
-                            batch_size=batch_size,
+                            batch_size=config["batch_size"],
                             steps=None,
                             shuffle=False,
                             partition=args.partition)
 
 
 # Training loop
-for epoch in range(num_epochs):
+best_val_loss = float("inf")
+for epoch in range(config["num_epochs"]):
     model.train()
     total_loss = 0
     
@@ -132,25 +138,77 @@ for epoch in range(num_epochs):
         optimizer.step()
         
         total_loss += loss.item()
-    
+   
     avg_loss = total_loss / train_data_gen.steps
-    print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {avg_loss:.4f}')
+    
+    # Evaluation
+    model.eval()
+    with torch.no_grad():
+        # Assuming you have a separate validation generator
+        val_loss = 0
+        for i in range(val_data_gen.steps):
+            batch = next(val_data_gen)
+            x, y = batch
+            x = torch.FloatTensor(x).to(device)
+            y = torch.FloatTensor(y).to(device)
+            
+            outputs = model(x)
+            loss = criterion(outputs, y)
+            val_loss += loss.item()
+        
+        avg_val_loss = val_loss / val_data_gen.steps
 
-# Evaluation
+    print(f'Epoch [{epoch+1}/{config["num_epochs"]}], Train Loss: {avg_loss:.4f}, Val Loss: {avg_val_loss:.4f}')
+    
+    wandb.log({
+        "train_loss": avg_loss,
+        "val_loss": avg_val_loss
+    })
+
+    # Save the best model
+    if avg_val_loss < best_val_loss:
+        best_val_loss = avg_val_loss
+        torch.save(model.state_dict(), 'best_model.pth')
+
+
+model.load_state_dict(torch.load('best_model.pth'))
+
+# Testing
 model.eval()
+all_predictions = []
+all_targets = []
+
 with torch.no_grad():
-    # Assuming you have a separate validation generator
-    val_loss = 0
-    for i in range(val_data_gen.steps):
-        batch = next(val_data_gen)
+    for i in range(test_data_gen.steps):
+        batch = next(test_data_gen)
         x, y = batch
         x = torch.FloatTensor(x).to(device)
         y = torch.FloatTensor(y).to(device)
         
         outputs = model(x)
-        loss = criterion(outputs, y)
-        val_loss += loss.item()
-    
-    avg_val_loss = val_loss / val_data_gen.steps
-    print(f'Validation Loss: {avg_val_loss:.4f}')
+        
+        all_predictions.append(outputs.cpu().numpy())
+        all_targets.append(y.cpu().numpy())
 
+# Concatenate all batches
+all_predictions = np.concatenate(all_predictions, axis=0)
+all_targets = np.concatenate(all_targets, axis=0)
+
+# Calculate MSE
+mse = np.mean((all_predictions - all_targets) ** 2)
+
+# Calculate RMSE
+rmse = np.sqrt(mse)
+
+print(f'Final Test MSE: {mse:.4f}')
+print(f'Final Test RMSE: {rmse:.4f}')  
+
+
+# Log test metrics to wandb
+wandb.log({
+    "MSE": mse,
+    "RMSE": rmse
+})
+
+# Finish the wandb run
+wandb.finish()
