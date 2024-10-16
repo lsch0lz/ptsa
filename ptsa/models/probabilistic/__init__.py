@@ -1,0 +1,2 @@
+def lstm():
+    return None
