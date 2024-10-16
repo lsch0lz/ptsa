@@ -39,7 +39,7 @@ config = {
     "hidden_size": 64,
     "num_layers": 2,
     "learning_rate": 0.001,
-    "num_epochs": 20,
+    "num_epochs": 40,
     "batch_size": 64,
     "dropout": 0.2
 }
@@ -49,6 +49,7 @@ wandb.init(project="deterministic_lstm_los", config=config)
 device = "cuda" if torch.cuda.is_available() else "cpu" 
 
 model = LSTM(config["input_size"], config["hidden_size"], config["num_layers"], config["dropout"]).to(device)
+print(f"Model device: {next(model.parameters()).device}")
 
 # Loss and optimizer
 criterion = nn.MSELoss()
@@ -171,6 +172,7 @@ for epoch in range(config["num_epochs"]):
         torch.save(model.state_dict(), 'best_model.pth')
 
 
+wandb.log_artifact("best_model.pth", name="40_epochs_run", type="model")
 model.load_state_dict(torch.load('best_model.pth'))
 
 # Testing
@@ -209,6 +211,7 @@ wandb.log({
     "MSE": mse,
     "RMSE": rmse
 })
+
 
 # Finish the wandb run
 wandb.finish()
