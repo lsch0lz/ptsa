@@ -1,5 +1,9 @@
+from typing import List
+
 import torch
 from torch import nn
+from torch import Tensor
+
 
 class LSTM(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, dropout=0.2):
@@ -15,22 +19,20 @@ class LSTM(nn.Module):
     def forward(self, x):
         # x shape: (batch_size, sequence_length, input_size)
         
-        # Initialize hidden state with zeros
-        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
-        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
+        h0: Tensor = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
+        c0: Tensor = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
         
-        # Forward propagate LSTM
         out, _ = self.lstm(x, (h0, c0))
         
-        # Apply dropout to the output
-        out = nn.functional.dropout(out, p=self.dropout, training=self.training)
+        out: Tensor = nn.functional.dropout(out, p=self.dropout, training=self.training)
         
-        # Decode the hidden state of the last time step
-        out = self.fc(out[:, -1, :])
+        out: Tensor = self.fc(out[:, -1, :])
+   
         return out.squeeze(1)
     
+    
     def predict_with_uncertainty(self, x, num_samples=100):
-        self.train()  # Set the model to training mode to activate dropout
+        self.train()
         
         predictions = []
         for _ in range(num_samples):

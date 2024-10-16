@@ -54,7 +54,6 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 model = LSTM(config["input_size"], config["hidden_size"], config["num_layers"], config["dropout"]).to(device)
 print(f"Model device: {next(model.parameters()).device}")
 
-# Loss and optimizer
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"])
 
@@ -62,15 +61,12 @@ optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"])
 all_data = LengthOfStayReader(dataset_dir=os.path.join(args.data, 'train'),
                                 listfile=os.path.join(args.data, 'train/listfile.csv'))
 
-# Split data into train, validation, and test sets
 train_val_data, test_data = train_test_split(all_data._data, test_size=0.2, random_state=42)
 train_data, val_data = train_test_split(train_val_data, test_size=0.2, random_state=42)
 
-# Limit training samples if specified
 if args.num_train_samples is not None:
     train_data = train_data[:args.num_train_samples]
 
-# Create readers for each split
 train_reader = LengthOfStayReader(dataset_dir=os.path.join(args.data, 'train'))
 train_reader._data = train_data
 
@@ -132,11 +128,9 @@ for epoch in range(config["num_epochs"]):
         x = torch.FloatTensor(x).to(device)
         y = torch.FloatTensor(y).to(device)
         
-        # Forward pass
         outputs = model(x)
         loss = criterion(outputs, y)
         
-        # Backward and optimize
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -148,7 +142,6 @@ for epoch in range(config["num_epochs"]):
     # Evaluation
     model.eval()
     with torch.no_grad():
-        # Assuming you have a separate validation generator
         val_loss = 0
         for i in range(val_data_gen.steps):
             batch = next(val_data_gen)
@@ -169,7 +162,6 @@ for epoch in range(config["num_epochs"]):
         "val_loss": avg_val_loss
     })
 
-    # Save the best model
     if avg_val_loss < best_val_loss:
         best_val_loss = avg_val_loss
         torch.save(model.state_dict(), 'best_model.pth')
@@ -198,31 +190,24 @@ with torch.no_grad():
         all_uncertainties.append(variance.cpu().numpy())
         all_targets.append(y.cpu().numpy())
 
-# Concatenate all batches
 all_predictions = np.concatenate(all_predictions, axis=0)
 all_uncertainties = np.concatenate(all_uncertainties, axis=0)
 all_targets = np.concatenate(all_targets, axis=0)
 
-# Calculate MSE
 mse = np.mean((all_predictions - all_targets) ** 2)
 
-# Calculate RMSE
 rmse = np.sqrt(mse)
 
-# Mean Uncertainty
 mean_uncertainty = np.mean(all_uncertainties)
 
 print(f'Final Test MSE: {mse:.4f}')
 print(f'Final Test RMSE: {rmse:.4f}')  
 print(f"Final Test Uncertainty: {mean_uncertainty:.4f}")
 
-# Log test metrics to wandb
 wandb.log({
     "MSE": mse,
     "RMSE": rmse,
     "Mean Uncertainty": mean_uncertainty
 })
 
-
-# Finish the wandb run
 wandb.finish()
