@@ -1,2 +1,0 @@
-def lstm():
-    return None
