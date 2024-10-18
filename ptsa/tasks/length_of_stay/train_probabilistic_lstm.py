@@ -12,7 +12,8 @@ from ptsa.tasks.length_of_stay.utils import BatchGen
 from ptsa.utils.preprocessing import Normalizer, Discretizer
 from ptsa.tasks.length_of_stay.utils import utils
 
-from ptsa.models.probabilistic.bayesian_lstm import LSTM 
+from ptsa.models.probabilistic.bayesian_lstm import LSTM
+from ptsa.models.probabilistic.rnn import RNN
 
 parser = argparse.ArgumentParser()
 utils.add_common_arguments(parser)
@@ -34,6 +35,8 @@ parser.add_argument('--num_train_samples', type=int, default=None, help='Number 
 
 parser.add_argument('--num_mc_samples', type=int, default=25, help='Number of Monte Carlo samples for uncertainty estimation')
 
+parser.add_argument("--model", type=str, default="lstm", help="lstm, rnn, gru, transformer")
+
 args = parser.parse_args()
 
 config = {
@@ -41,17 +44,21 @@ config = {
     "hidden_size": 64,
     "num_layers": 2,
     "learning_rate": 0.001,
-    "num_epochs": 50,
+    "num_epochs": 5,
     "batch_size": 64,
     "dropout": 0.2,
     "num_mc_samples": args.num_mc_samples
 }
 
-wandb.init(project="probabilistic_lstm_los", config=config)
+wandb.init(project="probabilistic_rnn_los", config=config)
 
 device = "cuda" if torch.cuda.is_available() else "cpu" 
 
-model = LSTM(config["input_size"], config["hidden_size"], config["num_layers"], config["dropout"]).to(device)
+if args.model == "lstm":
+    model = LSTM(config["input_size"], config["hidden_size"], config["num_layers"], config["dropout"]).to(device)
+elif args.model == "rnn":
+    model = RNN(config["input_size"], config["hidden_size"], config["num_layers"], config["dropout"]).to(device)
+
 print(f"Model device: {next(model.parameters()).device}")
 
 criterion = nn.MSELoss()
@@ -164,11 +171,11 @@ for epoch in range(config["num_epochs"]):
 
     if avg_val_loss < best_val_loss:
         best_val_loss = avg_val_loss
-        torch.save(model.state_dict(), 'best_model.pth')
+        torch.save(model.state_dict(), 'probabilistic_rnn_model.pth')
 
 
-wandb.log_artifact("best_model.pth", name="uncertainty_model", type="model")
-model.load_state_dict(torch.load('best_model.pth'))
+wandb.log_artifact("probabilistic_rnn_model.pth", name="uncertainty_model", type="model")
+model.load_state_dict(torch.load('probabilistic_rnn_model.pth'))
 
 # Testing
 model.eval()
