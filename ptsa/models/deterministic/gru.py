@@ -1,5 +1,5 @@
 import torch
-from torch import device, nn
+from torch import nn
 from torch import Tensor
 
 
@@ -15,7 +15,7 @@ class GRU(nn.Module):
         self.fc = nn.Linear(hidden_size, 1)
 
     def forward(self, x):
-    # x shape: (batch_size, sequence_length, input_size)
+        # x shape: (batch_size, sequence_length, input_size)
 
         h0: Tensor = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
         out, _ = self.gru(x, h0)
