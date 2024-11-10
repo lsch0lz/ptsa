@@ -14,6 +14,10 @@ from ptsa.tasks.length_of_stay.utils import utils
 
 from ptsa.models.probabilistic.bayesian_lstm import LSTM
 from ptsa.models.probabilistic.rnn import RNN
+from ptsa.models.probabilistic.gru import GRU
+
+# EXAMPLE USAGE
+# python ptsa/tasks/length_of_stay/train_probabilistic_lstm.py --data /vol/tmp/scholuka/mimic-iv-benchmarks/data/length-of-stay --network ptsa/models/probabilistic/gru.py --model_name test_gru --model gru
 
 parser = argparse.ArgumentParser()
 utils.add_common_arguments(parser)
@@ -61,6 +65,8 @@ if args.model == "lstm":
     model = LSTM(config["input_size"], config["hidden_size"], config["num_layers"], config["dropout"]).to(device)
 elif args.model == "rnn":
     model = RNN(config["input_size"], config["hidden_size"], config["num_layers"], config["dropout"]).to(device)
+elif args.model == "gru": 
+    model = GRU(config["input_size"], config["hidden_size"], config["num_layers"], config["dropout"]).to(device)
 
 print(f"Model device: {next(model.parameters()).device}")
 
