@@ -107,22 +107,32 @@ if args.mode == 'train':
         for i in range(len(train_raw[0])):
             x, y = train_raw[0][i], train_raw[1]
             x = torch.FloatTensor(x).to(device)
-            
             # y = torch.FloatTensor(y).to(device)
 
-            y = torch.FloatTensor([y[0] if isinstance(y, (list, np.ndarray)) else y]).to(device)
+            y = torch.FloatTensor([y[i] if isinstance(y, (list, np.ndarray)) else y]).to(device)
 
             # adding batch dim
             if x.dim() == 2:
                 x = x.unsqueeze(0)
             
             # y = y.unsqueeze(0)
+            
+            """
+            print(f"TRAINING")
+            print(f"X Shape: {x.shape}")
+            print(f"Y Shape: {y.shape}")
+
+            print(f"X Value: {x}")
+            print(f"Y Value: {y}")
+            """
 
             optimizer.zero_grad()
             outputs = model(x)
 
             outputs = outputs.view(-1)
-            y = y.view(-1)
+            # print(f"Outputs: {outputs.shape}")
+            # print(f"Outputs: {outputs}")
+            # y = y.view(-1)
             
             loss = criterion(outputs, y)
             loss.backward()
@@ -135,23 +145,35 @@ if args.mode == 'train':
         model.eval()
         val_loss = 0
         for i in range(len(val_raw[0])):
-            x, y = val_raw[0][i], val_raw[1]
+            x, y = val_raw[0][i], val_raw[1][i]
             x = torch.FloatTensor(x).to(device)
             # y = torch.FloatTensor(y).to(device)
             
-            y = torch.FloatTensor([y[0] if isinstance(y, (list, np.ndarray)) else y]).to(device)
+            y = torch.FloatTensor([y[i] if isinstance(y, (list, np.ndarray)) else y]).to(device)
             
             # adding batch dim
             if x.dim() == 2:
                 x = x.unsqueeze(0)
             
             # y = y.unsqueeze(0)
+            
+            """
+            print(f"VALIDATION")
+            print(f"X Shape: {x.shape}")
+            print(f"Y Shape: {y.shape}")
+
+            print(f"X Value: {x}")
+            print(f"Y Value: {y}")
+            """
 
             outputs = model(x)
 
             outputs = outputs.view(-1)
-            y = y.view(-1)
+            # y = y.view(-1)
 
+            # print(f"Outputs: {outputs.shape}")
+            # print(f"Outputs: {outputs}")
+            
             loss = criterion(outputs, y)
             val_loss += loss.item()
 
