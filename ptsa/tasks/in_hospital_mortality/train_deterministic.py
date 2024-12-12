@@ -36,7 +36,7 @@ config = {
     "hidden_size": 64,
     "num_layers": 2,
     "learning_rate": args.lr,
-    "num_epochs": 5,
+    "num_epochs": 100,
     "batch_size": 64,
     "dropout": 0.2
 }
@@ -91,7 +91,8 @@ if args.load_state != "":
 # Read data
 train_raw = load_data(train_reader, discretizer, normalizer, args.small_part)
 val_raw = load_data(val_reader, discretizer, normalizer, args.small_part)
-test_raw = load_data(test_reader, discretizer, normalizer, args.small_part, return_names=True)
+# test_raw = load_data(test_reader, discretizer, normalizer, args.small_part, return_names=True)
+test_raw = load_data(test_reader, discretizer, normalizer, args.small_part)
 
 # TODO: Use train_test_split() for validation data split
 
@@ -117,21 +118,11 @@ if args.mode == 'train':
             
             # y = y.unsqueeze(0)
             
-            """
-            print(f"TRAINING")
-            print(f"X Shape: {x.shape}")
-            print(f"Y Shape: {y.shape}")
-
-            print(f"X Value: {x}")
-            print(f"Y Value: {y}")
-            """
-
             optimizer.zero_grad()
             outputs = model(x)
 
             outputs = outputs.view(-1)
-            # print(f"Outputs: {outputs.shape}")
-            # print(f"Outputs: {outputs}")
+
             # y = y.view(-1)
             
             loss = criterion(outputs, y)
@@ -145,7 +136,7 @@ if args.mode == 'train':
         model.eval()
         val_loss = 0
         for i in range(len(val_raw[0])):
-            x, y = val_raw[0][i], val_raw[1][i]
+            x, y = val_raw[0][i], val_raw[1]
             x = torch.FloatTensor(x).to(device)
             # y = torch.FloatTensor(y).to(device)
             
@@ -157,15 +148,6 @@ if args.mode == 'train':
             
             # y = y.unsqueeze(0)
             
-            """
-            print(f"VALIDATION")
-            print(f"X Shape: {x.shape}")
-            print(f"Y Shape: {y.shape}")
-
-            print(f"X Value: {x}")
-            print(f"Y Value: {y}")
-            """
-
             outputs = model(x)
 
             outputs = outputs.view(-1)
@@ -189,6 +171,64 @@ if args.mode == 'train':
         # Save the model checkpoint
         torch.save(model.state_dict(), os.path.join(args.output_dir, f"{args.model}.epoch{epoch}.pth"))
 
+model.eval()
+all_predictions = []
+all_targets = []
+
+with torch.no_grad():
+    for i in range(len(test_raw[0])):
+        x, y = test_raw[0][i], test_raw[1]
+        x = torch.FloatTensor(x).to(device)
+        
+        y = torch.FloatTensor([y[i] if isinstance(y, (list, np.ndarray)) else y]).to(device)
+        
+        # adding batch dim
+        if x.dim() == 2:
+            x = x.unsqueeze(0)
+        
+        outputs = model(x)
+
+        outputs = outputs.view(-1)
+        
+        all_predictions.append(outputs.cpu().numpy())
+        all_targets.append(y.cpu().numpy())
+
+import numpy as np
+from sklearn.metrics import accuracy_score, precision_score, recall_score
+
+# Convert predictions to binary labels
+# Typical threshold is 0.5, but you might want to adjust this
+def compute_metrics(predictions, targets, threshold=0.5):
+    # Convert predictions to binary labels
+    pred_labels = (np.array(predictions) > threshold).astype(int)
+    true_labels = np.array(targets).astype(int)
+    
+    # Calculate metrics
+    accuracy = accuracy_score(true_labels, pred_labels)
+    precision = precision_score(true_labels, pred_labels)
+    recall = recall_score(true_labels, pred_labels)
+    
+    return {
+        'Accuracy': accuracy,
+        'Precision': precision,
+        'Recall': recall
+    }
+
+# Example usage (replace with your actual predictions and targets)
+predictions = [pred[0] for pred in all_predictions]
+targets = [target[0] for target in all_targets]
+
+metrics = compute_metrics(predictions, targets)
+
+wandb.log(metrics)
+
+# Print results
+for metric, value in metrics.items():
+    print(f"{metric}: {value:.4f}")
+
+
+
+"""
 elif args.mode == 'test':
     model.eval()
     with torch.no_grad():
@@ -206,8 +246,6 @@ elif args.mode == 'test':
         "MSE": mse,
         "RMSE": rmse
     })
-
-else:
-    raise ValueError("Wrong value for args.mode")
+"""
 
 wandb.finish()
