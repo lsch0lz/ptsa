@@ -27,4 +27,4 @@ class LSTM(nn.Module):
         
         out: Tensor = self.fc(out[:, -1, :])
         
-        return self.sigmoid(out).squeeze(1)
+        return self.sigmoid(out).squeeze()

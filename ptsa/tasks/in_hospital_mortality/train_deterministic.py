@@ -36,8 +36,8 @@ config = {
     "hidden_size": 64,
     "num_layers": 2,
     "learning_rate": args.lr,
-    "num_epochs": args.epochs,
-    "batch_size": args.batch_size,
+    "num_epochs": 5,
+    "batch_size": 64,
     "dropout": 0.2
 }
 
@@ -107,20 +107,16 @@ if args.mode == 'train':
         for i in range(len(train_raw[0])):
             x, y = train_raw[0][i], train_raw[1]
             x = torch.FloatTensor(x).to(device)
-            y = torch.FloatTensor(y).to(device)
             
+            # y = torch.FloatTensor(y).to(device)
+
+            y = torch.FloatTensor([y[0] if isinstance(y, (list, np.ndarray)) else y]).to(device)
+
             # adding batch dim
             if x.dim() == 2:
                 x = x.unsqueeze(0)
             
             # y = y.unsqueeze(0)
-
-            print(f"TRAINING:")
-            print(f"X Shape: {x.shape}")
-            print(f"Y Shape: {y.shape}")
-
-            print(f"X Value: {x}")
-            print(f"Y Value: {y}")
 
             optimizer.zero_grad()
             outputs = model(x)
@@ -128,14 +124,6 @@ if args.mode == 'train':
             outputs = outputs.view(-1)
             y = y.view(-1)
             
-            print(f"AFTER MODEL")
-            
-            print(f"Y Shape: {y.shape}")
-            print(f"Y Value: {y}")
-            
-            print(f"Output shape: {outputs.shape}")
-            print(f"Output value: {outputs}")
-
             loss = criterion(outputs, y)
             loss.backward()
             optimizer.step()
@@ -149,20 +137,15 @@ if args.mode == 'train':
         for i in range(len(val_raw[0])):
             x, y = val_raw[0][i], val_raw[1]
             x = torch.FloatTensor(x).to(device)
-            y = torch.FloatTensor(y).to(device)
+            # y = torch.FloatTensor(y).to(device)
+            
+            y = torch.FloatTensor([y[0] if isinstance(y, (list, np.ndarray)) else y]).to(device)
             
             # adding batch dim
             if x.dim() == 2:
                 x = x.unsqueeze(0)
             
             # y = y.unsqueeze(0)
-
-            print(f"VALIDATION:")
-            print(f"X Shape: {x.shape}")
-            print(f"Y Shape: {y.shape}")
-
-            print(f"X Value: {x}")
-            print(f"Y Value: {y}")
 
             outputs = model(x)
 
@@ -182,7 +165,7 @@ if args.mode == 'train':
         })
 
         # Save the model checkpoint
-        torch.save(model.state_dict(), os.path.join(args.output_dir, f"{model.final_name}.epoch{epoch}.pth"))
+        torch.save(model.state_dict(), os.path.join(args.output_dir, f"{args.model}.epoch{epoch}.pth"))
 
 elif args.mode == 'test':
     model.eval()
