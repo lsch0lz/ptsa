@@ -109,6 +109,11 @@ if args.mode == 'train':
             x = torch.FloatTensor(x).to(device)
             y = torch.FloatTensor(y).to(device)
             
+            # adding batch dim
+            x = x.unsqueeze(0)
+            y = y.unsqueeze(0)
+
+            print(f"TRAINING:")
             print(f"X Shape: {x.shape}")
             print(f"Y Shape: {y.shape}")
 
@@ -135,6 +140,13 @@ if args.mode == 'train':
             # adding batch dim
             x = x.unsqueeze(0)
             y = y.unsqueeze(0)
+
+            print(f"VALIDATION:")
+            print(f"X Shape: {x.shape}")
+            print(f"Y Shape: {y.shape}")
+
+            print(f"X Value: {x}")
+            print(f"Y Value: {y}")
 
             outputs = model(x)
             loss = criterion(outputs, y)
