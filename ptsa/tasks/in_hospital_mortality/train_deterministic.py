@@ -110,8 +110,10 @@ if args.mode == 'train':
             y = torch.FloatTensor(y).to(device)
             
             # adding batch dim
-            x = x.unsqueeze(0)
-            y = y.unsqueeze(0)
+            if x.dim() == 2:
+                x = x.unsqueeze(0)
+            
+            # y = y.unsqueeze(0)
 
             print(f"TRAINING:")
             print(f"X Shape: {x.shape}")
@@ -122,6 +124,18 @@ if args.mode == 'train':
 
             optimizer.zero_grad()
             outputs = model(x)
+
+            outputs = outputs.view(-1)
+            y = y.view(-1)
+            
+            print(f"AFTER MODEL")
+            
+            print(f"Y Shape: {y.shape}")
+            print(f"Y Value: {y}")
+            
+            print(f"Output shape: {outputs.shape}")
+            print(f"Output value: {outputs}")
+
             loss = criterion(outputs, y)
             loss.backward()
             optimizer.step()
@@ -138,8 +152,10 @@ if args.mode == 'train':
             y = torch.FloatTensor(y).to(device)
             
             # adding batch dim
-            x = x.unsqueeze(0)
-            y = y.unsqueeze(0)
+            if x.dim() == 2:
+                x = x.unsqueeze(0)
+            
+            # y = y.unsqueeze(0)
 
             print(f"VALIDATION:")
             print(f"X Shape: {x.shape}")
@@ -149,6 +165,10 @@ if args.mode == 'train':
             print(f"Y Value: {y}")
 
             outputs = model(x)
+
+            outputs = outputs.view(-1)
+            y = y.view(-1)
+
             loss = criterion(outputs, y)
             val_loss += loss.item()
 
