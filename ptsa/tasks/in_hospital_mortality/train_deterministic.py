@@ -14,7 +14,7 @@ from ptsa.tasks.in_hospital_mortality.utils import load_data, save_results
 from ptsa.utils import utils
 from ptsa.utils import metrics
 
-from ptsa.models.deterministic.lstm import LSTM 
+from ptsa.models.deterministic.lstm_classification import LSTM 
 from ptsa.models.deterministic.rnn import RNN
 from ptsa.models.deterministic.gru import GRU
 
@@ -108,6 +108,12 @@ if args.mode == 'train':
             x, y = train_raw[0][i], train_raw[1]
             x = torch.FloatTensor(x).to(device)
             y = torch.FloatTensor(y).to(device)
+            
+            print(f"X Shape: {x.shape}")
+            print(f"Y Shape: {y.shape}")
+
+            print(f"X Value: {x}")
+            print(f"Y Value: {y}")
 
             optimizer.zero_grad()
             outputs = model(x)
@@ -125,6 +131,10 @@ if args.mode == 'train':
             x, y = val_raw[0][i], val_raw[1]
             x = torch.FloatTensor(x).to(device)
             y = torch.FloatTensor(y).to(device)
+            
+            # adding batch dim
+            x = x.unsqueeze(0)
+            y = y.unsqueeze(0)
 
             outputs = model(x)
             loss = criterion(outputs, y)
