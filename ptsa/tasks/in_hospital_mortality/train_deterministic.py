@@ -8,6 +8,9 @@ from torch import nn
 import wandb
 from tqdm import tqdm
 
+import matplotlib.pyplot as plt
+from sklearn.metrics import precision_recall_curve, average_precision_score
+
 from ptsa.tasks.readers import InHospitalMortalityReader
 from ptsa.utils.preprocessing import Discretizer, Normalizer
 from ptsa.tasks.in_hospital_mortality.utils import load_data, save_results
@@ -36,7 +39,7 @@ config = {
     "hidden_size": 64,
     "num_layers": 2,
     "learning_rate": args.lr,
-    "num_epochs": 50,
+    "num_epochs": 5,
     "batch_size": 64,
     "dropout": 0.2
 }
@@ -199,11 +202,9 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score
 # Convert predictions to binary labels
 # Typical threshold is 0.5, but you might want to adjust this
 def compute_metrics(predictions, targets, threshold=0.5):
-    # Convert predictions to binary labels
     pred_labels = (np.array(predictions) > threshold).astype(int)
     true_labels = np.array(targets).astype(int)
     
-    # Calculate metrics
     accuracy = accuracy_score(true_labels, pred_labels)
     precision = precision_score(true_labels, pred_labels)
     recall = recall_score(true_labels, pred_labels)
@@ -214,7 +215,6 @@ def compute_metrics(predictions, targets, threshold=0.5):
         'Recall': recall
     }
 
-# Example usage (replace with your actual predictions and targets)
 predictions = [pred[0] for pred in all_predictions]
 targets = [target[0] for target in all_targets]
 
@@ -222,8 +222,25 @@ metrics = compute_metrics(predictions, targets)
 
 wandb.log(metrics)
 
-# Print results
-for metric, value in metrics.items():
-    print(f"{metric}: {value:.4f}")
+# Precision-Recall Curve
+precisions, recalls, thresholds = precision_recall_curve(targets, predictions)
+
+avg_precision = average_precision_score(targets, predictions)
+
+plt.figure(figsize=(10, 6))
+plt.plot(recalls, precisions, color='blue', lw=2, label=f'Precision-Recall curve (AP = {avg_precision:.2f})')
+plt.xlabel('Recall')
+plt.ylabel('Precision')
+plt.title('Precision-Recall Curve')
+plt.legend(loc="lower right")
+plt.grid(True)
+
+plt.savefig(os.path.join(args.output_dir, 'precision_recall_curve.png'))
+
+wandb.log({
+    "precision_recall_curve": wandb.Image(plt),
+    "average_precision": avg_precision
+})
+
 
 wandb.finish()
