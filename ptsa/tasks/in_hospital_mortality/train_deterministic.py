@@ -36,7 +36,7 @@ config = {
     "hidden_size": 64,
     "num_layers": 2,
     "learning_rate": args.lr,
-    "num_epochs": 100,
+    "num_epochs": 50,
     "batch_size": 64,
     "dropout": 0.2
 }
@@ -225,27 +225,5 @@ wandb.log(metrics)
 # Print results
 for metric, value in metrics.items():
     print(f"{metric}: {value:.4f}")
-
-
-
-"""
-elif args.mode == 'test':
-    model.eval()
-    with torch.no_grad():
-        test_data, test_labels, test_names = test_raw
-        test_outputs = model(torch.FloatTensor(test_data).to(device))
-        test_preds = test_outputs[:, 0].cpu().numpy()
-
-    metrics.print_metrics_binary(test_labels, test_preds)
-    save_results(test_names, test_preds, test_labels, os.path.join(args.output_dir, "test_predictions", os.path.basename(args.load_state)) + ".csv")
-
-    mse = np.mean((test_preds - test_labels) ** 2)
-    rmse = np.sqrt(mse)
-
-    wandb.log({
-        "MSE": mse,
-        "RMSE": rmse
-    })
-"""
 
 wandb.finish()
