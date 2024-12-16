@@ -22,6 +22,74 @@ from ptsa.models.deterministic.lstm_classification import LSTM
 from ptsa.models.deterministic.rnn import RNN
 from ptsa.models.deterministic.gru import GRU
 
+
+def calculate_class_weights(labels):
+    """
+    Calculate class weights to handle class imbalance
+    
+    Args:
+        labels (numpy array or list): Binary labels
+    
+    Returns:
+        float: Weight for the positive class
+    """
+    total_samples = len(labels)
+    positive_samples = np.sum(labels)
+    negative_samples = total_samples - positive_samples
+    
+    # Calculate weight for positive class
+    pos_weight = negative_samples / positive_samples
+    
+    return pos_weight
+
+
+def log_detailed_metrics(targets, predictions):
+    """
+    Log comprehensive classification metrics
+    
+    Args:
+        targets (list): True labels
+        predictions (list): Predicted probabilities
+    """
+    # Convert to numpy arrays if needed
+    targets = np.array(targets)
+    predictions = np.array(predictions)
+    
+    # Binary predictions at 0.5 threshold
+    binary_predictions = (predictions >= 0.5).astype(int)
+    
+    # Compute metrics
+    accuracy = accuracy_score(targets, binary_predictions)
+    precision = precision_score(targets, binary_predictions)
+    recall = recall_score(targets, binary_predictions)
+    auc_roc = roc_auc_score(targets, predictions)
+    
+    # Precision-Recall Curve
+    precisions, recalls, thresholds = precision_recall_curve(targets, predictions)
+    avg_precision = average_precision_score(targets, predictions)
+    
+    # Logging to wandb
+    wandb.log({
+        "detailed_accuracy": accuracy,
+        "detailed_precision": precision,
+        "detailed_recall": recall,
+        "detailed_auc_roc": auc_roc,
+        "average_precision": avg_precision
+    })
+    
+    # Plot Precision-Recall Curve
+    plt.figure(figsize=(10, 6))
+    plt.plot(recalls, precisions, label=f'AP={avg_precision:.2f}')
+    plt.title('Precision-Recall Curve')
+    plt.xlabel('Recall')
+    plt.ylabel('Precision')
+    plt.legend()
+    
+    # Log curve to wandb
+    wandb.log({"pr_curve": wandb.Image(plt)})
+    plt.close()
+
+
 def objective(trial):
     # Hyperparameters to tune
     config = {
@@ -79,6 +147,12 @@ def objective(trial):
     train_raw = load_data(train_reader, discretizer, normalizer, args.small_part)
     val_raw = load_data(val_reader, discretizer, normalizer, args.small_part)
     test_raw = load_data(test_reader, discretizer, normalizer, args.small_part)
+    
+    # Calculate class weights
+    train_labels = train_raw[1]
+    pos_weight = calculate_class_weights(train_labels)
+
+    wandb.log({"pos_class_weight": pos_weight})
 
     # Build the model
     model = nn.Module()
@@ -90,7 +164,9 @@ def objective(trial):
         model = GRU(config["input_size"], config["hidden_size"], config["num_layers"], config["dropout"]).to(device)
 
     # Loss and Optimizer
-    criterion = nn.BCELoss()
+    # criterion = nn.BCELoss()
+    pos_weight_tensor = torch.tensor([pos_weight], device=device)
+    criterion = nn.BCELoss(weight=pos_weight_tensor)
     optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"])
 
     # Training loop
@@ -162,13 +238,11 @@ def objective(trial):
             raise optuna.exceptions.TrialPruned()
 
 
-    # TESING
+    # Final testing and metrics logging
     model.eval()
     all_predictions = []
     all_targets = []
-        
-    all_correct_testing = 0
-    total_samples_testing = 0
+    
     with torch.no_grad():
         for i in range(len(test_raw[0])):
             x, y = test_raw[0][i], test_raw[1]
@@ -183,49 +257,17 @@ def objective(trial):
             all_predictions.append(outputs.cpu().numpy())
             all_targets.append(y.cpu().numpy())
     
-            # Compute accuracy
-            predicted_testing = (outputs > 0.5).float()
-            all_correct_testing += (predicted_testing == y).float().sum().item()
-            total_samples_testing += y.size(0)
-    
     # Compute metrics
     predictions = [pred[0] for pred in all_predictions]
     targets = [target[0] for target in all_targets]
     
-    # Compute AUC-ROC as the objective metric
+    # Log detailed metrics
+    log_detailed_metrics(targets, predictions)
+
+    # Return AUC-ROC as the objective metric
     auc_roc = roc_auc_score(targets, predictions)
-    
-    # Precision-Recall Curve
-    precisions, recalls, _ = precision_recall_curve(targets, predictions)
-    avg_precision = average_precision_score(targets, predictions)
-
-    # Accuracy
-    accuracy = all_correct_testing / total_samples_testing
-
-    # Create Precision-Recall Curve Plot
-    plt.figure(figsize=(10, 6))
-    plt.plot(recalls, precisions, color='blue', lw=2, 
-                label=f'Precision-Recall curve (AP = {avg_precision:.2f})')
-    plt.xlabel('Recall')
-    plt.ylabel('Precision')
-    plt.title(f'Precision-Recall Curve - Trial {trial.number}')
-    plt.legend(loc="lower right")
-    plt.grid(True)
-
-    # Log metrics to wandb
-    wandb.log({
-        "accuracy": accuracy,
-        "auc_roc": auc_roc,
-        "average_precision": avg_precision,
-        "precision_recall_curve": wandb.Image(plt)
-    })
-
-    plt.close()
-    
-    # Close wandb run for this trial
-    wandb.finish()
-
     return auc_roc
+
 
 def main():
     # Parse arguments
