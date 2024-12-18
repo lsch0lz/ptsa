@@ -11,7 +11,7 @@ from tqdm import tqdm
 import optuna
 
 import matplotlib.pyplot as plt
-from sklearn.metrics import precision_recall_curve, average_precision_score, accuracy_score, precision_score, recall_score, roc_auc_score
+from sklearn.metrics import precision_recall_curve, average_precision_score, accuracy_score, precision_score, recall_score, roc_auc_score, f1_score
 
 from ptsa.tasks.readers import InHospitalMortalityReader
 from ptsa.utils.preprocessing import Discretizer, Normalizer
@@ -276,6 +276,17 @@ def objective(trial):
 
         # Return AUC-ROC as the objective metric
         auc_roc = roc_auc_score(targets, predictions)
+
+        best_thresh = 0
+        best_f1 = 0
+        for thresh in np.arange(0.1, 0.9, 0.01):
+            preds = (predictions >= thresh).astype(int)
+            f1 = f1_score(targets, preds)
+            if f1 > best_f1:
+                best_thresh = thresh
+                best_f1 = f1
+        
+        wandb.log({"Best F1": {best_f1},"Best Threshold": {best_thresh}})
         return auc_roc
     
     finally:
