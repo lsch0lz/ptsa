@@ -2,6 +2,7 @@ import os
 import re
 import argparse
 import numpy as np
+from sklearn.model_selection import train_test_split
 import torch
 from torch import nn
 
@@ -107,23 +108,27 @@ def objective(trial):
     wandb.init(
         project="ihm_lstm_optuna", 
         config=config,
-        group=f"trial_{trial.number}"
+        group=f"weight_decay_tuning_6269383a07daa12ec45c416fb6a559bebef1768b",
+        name=f"weight_decay_tuning_6269383a07daa12ec45c416fb6a559bebef1768b_trial_{trial.number}"
     )
 
     # Device configuration
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Data loading and preprocessing
-    train_reader = InHospitalMortalityReader(
+    all_reader = InHospitalMortalityReader(
         dataset_dir=os.path.join(args.data, 'train'), 
         listfile=os.path.join(args.data, 'train/listfile.csv'), 
         period_length=48.0
     )
-    val_reader = InHospitalMortalityReader(
-        dataset_dir=os.path.join(args.data, 'train'), 
-        listfile=os.path.join(args.data, 'train/listfile.csv'), 
-        period_length=48.0
-    )
+
+    train_data, val_data = train_test_split(all_reader._data, test_size=0.2, random_state=43)
+
+    train_reader = InHospitalMortalityReader(dataset_dir=os.path.join(args.data, 'train'), listfile=os.path.join(args.data, 'train/listfile.csv'), period_length=48.0)
+    train_reader._data = train_data
+    
+    val_reader = InHospitalMortalityReader(dataset_dir=os.path.join(args.data, 'train'), listfile=os.path.join(args.data, 'train/listfile.csv'), period_length=48.0)
+    val_reader._data = val_data
 
     test_reader = InHospitalMortalityReader(dataset_dir=os.path.join(args.data, 'test'), listfile=os.path.join(args.data, 'test/listfile.csv'), period_length=48.0)
     
