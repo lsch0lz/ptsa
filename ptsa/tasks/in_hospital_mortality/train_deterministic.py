@@ -93,13 +93,14 @@ def log_detailed_metrics(targets, predictions):
 def objective(trial):
     # Hyperparameters to tune
     config = {
-        "input_size": 76,  # Fixed based on input data
+        "input_size": 76,
         "hidden_size": trial.suggest_int('hidden_size', 32, 256),
         "num_layers": trial.suggest_int('num_layers', 1, 4),
         "learning_rate": trial.suggest_loguniform('learning_rate', 1e-5, 1e-2),
         "batch_size": trial.suggest_categorical('batch_size', [32, 64, 128]),
         "dropout": trial.suggest_uniform('dropout', 0.1, 0.5),
-        "num_epochs": 10  # Could also be tuned, but keeping constant for now
+        "num_epochs": 10,
+        "weight_decay": trial.suggest_loguniform("weight_decay", 1e-6, 1e-2)
     }
 
     # Initialize wandb run for this trial
@@ -167,7 +168,7 @@ def objective(trial):
     # criterion = nn.BCELoss()
     pos_weight_tensor = torch.tensor([pos_weight], device=device)
     criterion = nn.BCELoss(weight=pos_weight_tensor)
-    optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"])
+    optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"])
 
     # Training loop
     for epoch in range(config["num_epochs"]):
