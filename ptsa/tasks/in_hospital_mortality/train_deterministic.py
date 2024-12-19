@@ -242,6 +242,8 @@ def objective(trial):
                     best_f1 = f1
                     best_thresh = thresh
 
+                    torch.save(model.state_dict(), os.path.join(args.output_dir, f"{args.model}.epoch{epoch}.pth"))
+            
             wandb.log({
                 "epoch": epoch,
                 "val_loss": val_loss,
@@ -260,9 +262,6 @@ def objective(trial):
                 "val_loss": val_loss
             })
 
-            # Save the model checkpoint
-            torch.save(model.state_dict(), os.path.join(args.output_dir, f"{args.model}.epoch{epoch}.pth"))
-        
         # Final testing and metrics logging
         model.eval()
         all_predictions = []
