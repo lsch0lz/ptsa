@@ -57,9 +57,8 @@ def log_detailed_metrics(targets, predictions):
     predictions = np.array(predictions)
     
     # Binary predictions at 0.5 threshold
-    # binary_predictions = (predictions >= 0.5).astype(int)
+    binary_predictions = (predictions >= 0.5).astype(int)
     
-    binary_predictions = (predictions >= 0.25).astype(int)
     # Compute metrics
     accuracy = accuracy_score(targets, binary_predictions)
     precision = precision_score(targets, binary_predictions)
@@ -98,8 +97,8 @@ def objective(trial):
     # Initialize wandb run for this trial
     wandb.init(
         project="ihm_lstm_optuna", 
-        group=f"tune_pos_weight_d107f9cddbf810d75f7845c1b8b6802b8993d58a",
-        name=f"tune_pos_weight_d107f9cddbf810d75f7845c1b8b6802b8993d58a_trial_{trial.number}",
+        group=f"lower_prediction_threshold_03d16eef449c2297c0f302d1fdc97f6f11fe5082",
+        name=f"lower_prediction_threshold_03d16eef449c2297c0f302d1fdc97f6f11fe5082_trial_{trial.number}",
         reinit=True
     )
     try:
@@ -208,9 +207,8 @@ def objective(trial):
             
             model.eval()
             val_loss = 0
-            all_correct = 0
-            total_samples = 0
-            
+            predictions_val = []
+            targets_val = []
             for i in range(len(val_raw[0])):
                 x, y = val_raw[0][i], val_raw[1]
                 x = torch.FloatTensor(x).to(device)
@@ -226,12 +224,34 @@ def objective(trial):
                 loss = criterion(outputs, y)
                 val_loss += loss.item()
 
-                # Compute accuracy
-                predicted = (outputs > 0.25).float()
-                all_correct += (predicted == y).float().sum().item()
-                total_samples += y.size(0)
+                predictions_val.append(outputs.cpu().numpy())
+                targets_val.append(y.cpu().numpy())
 
             val_loss /= len(val_raw[0])
+
+            # Compute F1 score and best threshold
+            predictions = [pred[0] for pred in predictions_val]
+            targets = [target[0] for target in targets_val]
+            
+            thresholds = np.linspace(0, 1, 100)
+            best_f1, best_thresh = 0, 0
+            for thresh in thresholds:
+                binary_predictions = (np.array(predictions) >= thresh).astype(int)
+                f1 = f1_score(targets, binary_predictions)
+                if f1 > best_f1:
+                    best_f1 = f1
+                    best_thresh = thresh
+
+            wandb.log({
+                "epoch": epoch,
+                "val_loss": val_loss,
+                "best_f1": best_f1,
+                "best_threshold": best_thresh
+            })
+
+            trial.report(best_f1, epoch)
+            if trial.should_prune():
+                raise optuna.exceptions.TrialPruned()
 
             print(f'Epoch {epoch}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}')
 
@@ -243,14 +263,6 @@ def objective(trial):
             # Save the model checkpoint
             torch.save(model.state_dict(), os.path.join(args.output_dir, f"{args.model}.epoch{epoch}.pth"))
         
-            accuracy = all_correct / total_samples
-        
-            # Report for pruning
-            trial.report(accuracy, epoch)
-            if trial.should_prune():
-                raise optuna.exceptions.TrialPruned()
-
-
         # Final testing and metrics logging
         model.eval()
         all_predictions = []
@@ -280,17 +292,7 @@ def objective(trial):
         # Return AUC-ROC as the objective metric
         auc_roc = roc_auc_score(targets, predictions)
 
-        best_thresh = 0
-        best_f1 = 0
-        for thresh in np.arange(0.1, 0.9, 0.01):
-            preds = (predictions >= thresh).astype(int)
-            f1 = f1_score(targets, preds)
-            if f1 > best_f1:
-                best_thresh = thresh
-                best_f1 = f1
-        
-        wandb.log({"Best F1": {best_f1},"Best Threshold": {best_thresh}})
-        return auc_roc
+        return best_f1
     
     finally:
         wandb.finish()
