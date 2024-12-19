@@ -1,5 +1,6 @@
+from operator import neg
 import os
-import re
+import logging
 import argparse
 import numpy as np
 from sklearn.model_selection import train_test_split
@@ -7,8 +8,8 @@ import torch
 from torch import nn
 
 import wandb
-from tqdm import tqdm
 import optuna
+import random
 
 import matplotlib.pyplot as plt
 from sklearn.metrics import precision_recall_curve, average_precision_score, accuracy_score, precision_score, recall_score, roc_auc_score, f1_score
@@ -17,11 +18,41 @@ from ptsa.tasks.readers import InHospitalMortalityReader
 from ptsa.utils.preprocessing import Discretizer, Normalizer
 from ptsa.tasks.in_hospital_mortality.utils import load_data
 from ptsa.utils import utils
-from ptsa.utils import metrics
 
 from ptsa.models.deterministic.lstm_classification import LSTM 
 from ptsa.models.deterministic.rnn import RNN
 from ptsa.models.deterministic.gru import GRU
+
+logger = logging.getLogger(__name__)
+
+logging.basicConfig(level=logging.INFO)
+
+
+def even_out_number_of_data_points(data):
+    data_points, labels = data[0], data[1]
+    logger.info("Number of Samples: %s", len(labels))
+    # Separate indices by class
+    positive_indices = [i for i, label in enumerate(labels) if label == 1]
+    negative_indices = [i for i, label in enumerate(labels) if label == 0]
+    
+    logger.info("Number of Positive Samples: %s", len(positive_indices))
+    logger.info("Number of Negative Samples: %s", len(negative_indices))
+    # Determine the target number of samples (equal to the minority class size)
+    target_size = min(len(positive_indices), len(negative_indices))
+
+    # Downsample the majority class
+    sampled_positive_indices = random.sample(positive_indices, target_size)
+    sampled_negative_indices = random.sample(negative_indices, target_size)
+
+    # Combine indices and shuffle
+    balanced_indices = sampled_positive_indices + sampled_negative_indices
+    random.shuffle(balanced_indices)
+
+    # Create the new balanced dataset
+    balanced_data_points = [data_points[i] for i in balanced_indices]
+    balanced_labels = [labels[i] for i in balanced_indices]
+    logger.info("Number of Balanced Samples: %s", len(balanced_labels))
+    return (balanced_data_points, balanced_labels)
 
 
 def calculate_class_weights(labels):
@@ -97,8 +128,8 @@ def objective(trial):
     # Initialize wandb run for this trial
     wandb.init(
         project="ihm_lstm_optuna", 
-        group=f"lower_prediction_threshold_03d16eef449c2297c0f302d1fdc97f6f11fe5082",
-        name=f"lower_prediction_threshold_03d16eef449c2297c0f302d1fdc97f6f11fe5082_trial_{trial.number}",
+        group=f"f1_optimization_ada2555c4fc57845eff12bc3b0b9c0e4b5a7a7b9",
+        name=f"f1_optimization_ada2555c4fc57845eff12bc3b0b9c0e4b5a7a7b9_trial_{trial.number}",
         reinit=True
     )
     try:
@@ -155,14 +186,19 @@ def objective(trial):
         normalizer.load_params(normalizer_state)
 
         # Load data
-        train_raw = load_data(train_reader, discretizer, normalizer, args.small_part)
-        val_raw = load_data(val_reader, discretizer, normalizer, args.small_part)
-        test_raw = load_data(test_reader, discretizer, normalizer, args.small_part)
+        train_raw_data = load_data(train_reader, discretizer, normalizer, args.small_part)
+        val_raw_data = load_data(val_reader, discretizer, normalizer, args.small_part)
+        test_raw_data = load_data(test_reader, discretizer, normalizer, args.small_part)
         
+        train_raw = even_out_number_of_data_points(train_raw_data)
+        val_raw = even_out_number_of_data_points(val_raw_data)
+        test_raw = even_out_number_of_data_points(test_raw_data)
+
         # Calculate class weights
         train_labels = train_raw[1]
         # pos_weight = config["pos_weight"]
         pos_weight = calculate_class_weights(train_labels)
+        logger.info("Pos Weight: %s", pos_weight)
 
         wandb.log({"pos_class_weight": pos_weight})
 
@@ -224,7 +260,7 @@ def objective(trial):
                 loss = criterion(outputs, y)
                 val_loss += loss.item()
 
-                predictions_val.append(outputs.cpu().numpy())
+                predictions_val.append(outputs.detach().cpu().numpy())
                 targets_val.append(y.cpu().numpy())
 
             val_loss /= len(val_raw[0])
