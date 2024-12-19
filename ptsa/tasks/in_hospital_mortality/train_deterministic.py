@@ -57,8 +57,9 @@ def log_detailed_metrics(targets, predictions):
     predictions = np.array(predictions)
     
     # Binary predictions at 0.5 threshold
-    binary_predictions = (predictions >= 0.5).astype(int)
+    # binary_predictions = (predictions >= 0.5).astype(int)
     
+    binary_predictions = (predictions >= 0.25).astype(int)
     # Compute metrics
     accuracy = accuracy_score(targets, binary_predictions)
     precision = precision_score(targets, binary_predictions)
@@ -97,8 +98,8 @@ def objective(trial):
     # Initialize wandb run for this trial
     wandb.init(
         project="ihm_lstm_optuna", 
-        group=f"thre_c450762c533786540b47758fc323f7cb0a4dd680",
-        name=f"threshold_determination_c450762c533786540b47758fc323f7cb0a4dd680_trial_{trial.number}",
+        group=f"tune_pos_weight_d107f9cddbf810d75f7845c1b8b6802b8993d58a",
+        name=f"tune_pos_weight_d107f9cddbf810d75f7845c1b8b6802b8993d58a_trial_{trial.number}",
         reinit=True
     )
     try:
@@ -111,7 +112,8 @@ def objective(trial):
             "batch_size": trial.suggest_categorical('batch_size', [32, 64, 128]),
             "dropout": trial.suggest_uniform('dropout', 0.1, 0.5),
             "num_epochs": 10,
-            "weight_decay": trial.suggest_loguniform("weight_decay", 1e-6, 1e-2)
+            "weight_decay": trial.suggest_loguniform("weight_decay", 1e-6, 1e-2),
+            "pos_weight": trial.suggest_int("pos_weight", 3, 20)
         }
         
         wandb.config.update(config)
@@ -160,8 +162,8 @@ def objective(trial):
         
         # Calculate class weights
         train_labels = train_raw[1]
-        pos_weight = trial.suggest_int("pos_weight", 3, 20)
-        # pos_weight = calculate_class_weights(train_labels)
+        # pos_weight = config["pos_weight"]
+        pos_weight = calculate_class_weights(train_labels)
 
         wandb.log({"pos_class_weight": pos_weight})
 
@@ -225,7 +227,7 @@ def objective(trial):
                 val_loss += loss.item()
 
                 # Compute accuracy
-                predicted = (outputs > 0.5).float()
+                predicted = (outputs > 0.25).float()
                 all_correct += (predicted == y).float().sum().item()
                 total_samples += y.size(0)
 
