@@ -97,8 +97,8 @@ def objective(trial):
     # Initialize wandb run for this trial
     wandb.init(
         project="ihm_lstm_optuna", 
-        group=f"weight_decay_tuning_6269383a07daa12ec45c416fb6a559bebef1768b",
-        name=f"weight_decay_tuning_6269383a07daa12ec45c416fb6a559bebef1768b_trial_{trial.number}",
+        group=f"thre_c450762c533786540b47758fc323f7cb0a4dd680",
+        name=f"threshold_determination_c450762c533786540b47758fc323f7cb0a4dd680_trial_{trial.number}",
         reinit=True
     )
     try:
@@ -160,7 +160,8 @@ def objective(trial):
         
         # Calculate class weights
         train_labels = train_raw[1]
-        pos_weight = calculate_class_weights(train_labels)
+        pos_weight = trial.suggest_int("pos_weight", 3, 20)
+        # pos_weight = calculate_class_weights(train_labels)
 
         wandb.log({"pos_class_weight": pos_weight})
 
