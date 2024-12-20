@@ -95,6 +95,7 @@ def log_detailed_metrics(targets, predictions):
     precision = precision_score(targets, binary_predictions)
     recall = recall_score(targets, binary_predictions)
     auc_roc = roc_auc_score(targets, predictions)
+    f1 = f1_score(targets, binary_predictions)
     
     # Precision-Recall Curve
     precisions, recalls, thresholds = precision_recall_curve(targets, predictions)
@@ -106,7 +107,8 @@ def log_detailed_metrics(targets, predictions):
         "detailed_precision": precision,
         "detailed_recall": recall,
         "detailed_auc_roc": auc_roc,
-        "average_precision": avg_precision
+        "average_precision": avg_precision,
+        "f1-score": f1
     })
     
     # Plot Precision-Recall Curve
@@ -128,21 +130,21 @@ def objective(trial):
     # Initialize wandb run for this trial
     wandb.init(
         project="ihm_lstm_optuna", 
-        group=f"f1_optimization_ada2555c4fc57845eff12bc3b0b9c0e4b5a7a7b9",
-        name=f"f1_optimization_ada2555c4fc57845eff12bc3b0b9c0e4b5a7a7b9_trial_{trial.number}",
+        group=f"even_pos_neg_samples_878c013e12c6c7c9b5d0c7dd874908c2b391338e",
+        name=f"even_pos_neg_samples_878c013e12c6c7c9b5d0c7dd874908c2b391338e_trial_{trial.number}",
         reinit=True
     )
     try:
         # Hyperparameters to tune
         config = {
             "input_size": 76,
-            "hidden_size": trial.suggest_int('hidden_size', 32, 256),
-            "num_layers": trial.suggest_int('num_layers', 1, 4),
-            "learning_rate": trial.suggest_loguniform('learning_rate', 1e-5, 1e-2),
-            "batch_size": trial.suggest_categorical('batch_size', [32, 64, 128]),
+            "hidden_size": 10,
+            "num_layers": 2,
+            "learning_rate": 0.00003343125456901245,
+            "batch_size": 128,
             "dropout": trial.suggest_uniform('dropout', 0.1, 0.5),
-            "num_epochs": 10,
-            "weight_decay": trial.suggest_loguniform("weight_decay", 1e-6, 1e-2),
+            "num_epochs": trial.suggest_int("num_epochs", 15, 40),
+            "weight_decay": 0.001078824509663492,
             "pos_weight": trial.suggest_int("pos_weight", 3, 20)
         }
         
@@ -360,7 +362,7 @@ def main():
     # Create a study object and specify the direction is 'maximize'
     study = optuna.create_study(
         direction='maximize', 
-        pruner=optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=3)
+        pruner=optuna.pruners.MedianPruner(n_startup_trials=10, n_warmup_steps=6)
     )
 
     # Run the hyperparameter optimization
