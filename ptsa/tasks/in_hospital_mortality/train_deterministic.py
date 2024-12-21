@@ -129,22 +129,22 @@ def objective(trial):
 
     # Initialize wandb run for this trial
     wandb.init(
-        project="ihm_lstm_optuna", 
-        group=f"fine_tune_best_training_run_ad80d78e0fb66f32b913837f34cf2c4b8c1547f8",
-        name=f"fine_tune_best_training_runad80d78e0fb66f32b913837f34cf2c4b8c1547f8_trial_{trial.number}",
+        project="ihm_RNN_optuna", 
+        group=f"lstm_final_training_6f1d97c6425c09a329a7f55a8d8ffb8bf47d93c7",
+        name=f"lstm_final_training_trial_{trial.number}",
         reinit=True
     )
     try:
         # Hyperparameters to tune
         config = {
             "input_size": 76,
-            "hidden_size": 10,
-            "num_layers": 2,
-            "learning_rate": 0.00003343125456901245,
-            "dropout": trial.suggest_uniform('dropout', 0.1, 0.5),
-            "batch_size": 128,
-            "num_epochs": 39,
-            "weight_decay": 0.001078824509663492,
+            "hidden_size": trial.suggest_int('hidden_size', 32, 256),
+            "num_layers": trial.suggest_int('num_layers', 1, 4),
+            "learning_rate": trial.suggest_loguniform('learning_rate', 1e-5, 1e-2),
+            "dropout": 0.2,
+            "batch_size": trial.suggest_categorical('batch_size', [32, 64, 128]),
+            "num_epochs": trial.suggest_int('num_layers', 10, 40),
+            "weight_decay": trial.suggest_loguniform("weight_decay", 1e-6, 1e-2),
         }
         
         wandb.config.update(config)
@@ -197,7 +197,6 @@ def objective(trial):
 
         # Calculate class weights
         train_labels = train_raw[1]
-        # pos_weight = config["pos_weight"]
         pos_weight = calculate_class_weights(train_labels)
         logger.info("Pos Weight: %s", pos_weight)
 
@@ -213,7 +212,6 @@ def objective(trial):
             model = GRU(config["input_size"], config["hidden_size"], config["num_layers"], config["dropout"]).to(device)
 
         # Loss and Optimizer
-        # criterion = nn.BCELoss()
         pos_weight_tensor = torch.tensor([pos_weight], device=device)
         criterion = nn.BCELoss(weight=pos_weight_tensor)
         optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"])
@@ -279,7 +277,7 @@ def objective(trial):
                     best_f1 = f1
                     best_thresh = thresh
 
-                    torch.save(model.state_dict(), os.path.join(args.output_dir, f"{args.model}_best_model_epoch{epoch}.pth"))
+                    torch.save(model.state_dict(), os.path.join(args.output_dir, f"{args.model}/best_model_epoch{epoch}.pth"))
             
             wandb.log({
                 "epoch": epoch,
@@ -359,10 +357,13 @@ def main():
     args = parser.parse_args()
 
     # Create a study object and specify the direction is 'maximize'
+    
     study = optuna.create_study(
         direction='maximize', 
         pruner=optuna.pruners.MedianPruner(n_startup_trials=10, n_warmup_steps=6)
     )
+    
+    # study = optuna.create_study(direction="maximize")
 
     # Run the hyperparameter optimization
     study.optimize(objective, n_trials=args.num_trials)
