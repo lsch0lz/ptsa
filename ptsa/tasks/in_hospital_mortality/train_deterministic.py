@@ -130,8 +130,8 @@ def objective(trial):
     # Initialize wandb run for this trial
     wandb.init(
         project="ihm_lstm_optuna", 
-        group=f"even_pos_neg_samples_878c013e12c6c7c9b5d0c7dd874908c2b391338e",
-        name=f"even_pos_neg_samples_878c013e12c6c7c9b5d0c7dd874908c2b391338e_trial_{trial.number}",
+        group=f"fine_tune_best_training_run_ad80d78e0fb66f32b913837f34cf2c4b8c1547f8",
+        name=f"fine_tune_best_training_runad80d78e0fb66f32b913837f34cf2c4b8c1547f8_trial_{trial.number}",
         reinit=True
     )
     try:
@@ -141,11 +141,10 @@ def objective(trial):
             "hidden_size": 10,
             "num_layers": 2,
             "learning_rate": 0.00003343125456901245,
-            "batch_size": 128,
             "dropout": trial.suggest_uniform('dropout', 0.1, 0.5),
-            "num_epochs": trial.suggest_int("num_epochs", 15, 40),
+            "batch_size": 128,
+            "num_epochs": 39,
             "weight_decay": 0.001078824509663492,
-            "pos_weight": trial.suggest_int("pos_weight", 3, 20)
         }
         
         wandb.config.update(config)
@@ -280,7 +279,7 @@ def objective(trial):
                     best_f1 = f1
                     best_thresh = thresh
 
-                    torch.save(model.state_dict(), os.path.join(args.output_dir, f"{args.model}.epoch{epoch}.pth"))
+                    torch.save(model.state_dict(), os.path.join(args.output_dir, f"{args.model}_best_model_epoch{epoch}.pth"))
             
             wandb.log({
                 "epoch": epoch,
