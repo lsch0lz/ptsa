@@ -20,13 +20,14 @@ from ptsa.tasks.in_hospital_mortality.utils import load_data
 from ptsa.utils import utils
 
 from ptsa.models.deterministic.lstm_classification import LSTM 
-from ptsa.models.deterministic.rnn import RNN
-from ptsa.models.deterministic.gru import GRU
+from ptsa.models.deterministic.rnn_classification import RNN
+from ptsa.models.deterministic.gru_classification import GRU
 
 logger = logging.getLogger(__name__)
 
 logging.basicConfig(level=logging.INFO)
 
+best_f1_score = 0.0
 
 def even_out_number_of_data_points(data):
     data_points, labels = data[0], data[1]
@@ -123,6 +124,8 @@ def log_detailed_metrics(targets, predictions):
     wandb.log({"pr_curve": wandb.Image(plt)})
     plt.close()
 
+    return f1
+
 
 def objective(trial):
     wandb.finish()
@@ -130,8 +133,8 @@ def objective(trial):
     # Initialize wandb run for this trial
     wandb.init(
         project="ihm_RNN_optuna", 
-        group=f"lstm_final_training_6f1d97c6425c09a329a7f55a8d8ffb8bf47d93c7",
-        name=f"lstm_final_training_trial_{trial.number}",
+        group=f"rnn_fine_tuning_52657b607487eb55d0403aad341f9d3b69dcfed4",
+        name=f"rnn_fine_tuning_52657b607487eb55d0403aad341f9d3b69dcfed4_trial_{trial.number}",
         reinit=True
     )
     try:
@@ -143,7 +146,7 @@ def objective(trial):
             "learning_rate": trial.suggest_loguniform('learning_rate', 1e-5, 1e-2),
             "dropout": 0.2,
             "batch_size": trial.suggest_categorical('batch_size', [32, 64, 128]),
-            "num_epochs": trial.suggest_int('num_layers', 10, 40),
+            "num_epochs": trial.suggest_int('num_epochs', 10, 40),
             "weight_decay": trial.suggest_loguniform("weight_decay", 1e-6, 1e-2),
         }
         
@@ -264,6 +267,7 @@ def objective(trial):
 
             val_loss /= len(val_raw[0])
 
+            """
             # Compute F1 score and best threshold
             predictions = [pred[0] for pred in predictions_val]
             targets = [target[0] for target in targets_val]
@@ -278,15 +282,21 @@ def objective(trial):
                     best_thresh = thresh
 
                     torch.save(model.state_dict(), os.path.join(args.output_dir, f"{args.model}/best_model_epoch{epoch}.pth"))
+            """
+
+            predictions = [pred[0] for pred in predictions_val]
+            targets = [target[0] for target in targets_val]
             
+            binary_predictions = (np.array(predictions) >= 0.5).astype(int)
+            f1 = f1_score(targets, binary_predictions)
+
             wandb.log({
                 "epoch": epoch,
                 "val_loss": val_loss,
-                "best_f1": best_f1,
-                "best_threshold": best_thresh
+                "f1": f1,
             })
 
-            trial.report(best_f1, epoch)
+            trial.report(f1, epoch)
             if trial.should_prune():
                 raise optuna.exceptions.TrialPruned()
 
@@ -321,12 +331,16 @@ def objective(trial):
         targets = [target[0] for target in all_targets]
         
         # Log detailed metrics
-        log_detailed_metrics(targets, predictions)
-
+        f1_score_testing = log_detailed_metrics(targets, predictions)
+        
+        logger.info("Currently best F1-Score: %s", best_f1_score)
+        if f1_score_testing > best_f1_score:
+            logger.info("New best F1-Score: %s", f1_score_testing)
+            torch.save(model.state_dict(), os.path.join(args.output_dir, f"{args.model}/best_model_trial_{trial.number}.pth"))
         # Return AUC-ROC as the objective metric
         auc_roc = roc_auc_score(targets, predictions)
 
-        return best_f1
+        return f1_score_testing
     
     finally:
         wandb.finish()
