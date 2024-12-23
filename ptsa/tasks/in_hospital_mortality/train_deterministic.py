@@ -133,8 +133,8 @@ def objective(trial):
     # Initialize wandb run for this trial
     wandb.init(
         project="ihm_RNN_optuna", 
-        group=f"rnn_fine_tuning_52657b607487eb55d0403aad341f9d3b69dcfed4",
-        name=f"rnn_fine_tuning_52657b607487eb55d0403aad341f9d3b69dcfed4_trial_{trial.number}",
+        group=f"rnn_fine_tuning_with_model_52657b607487eb55d0403aad341f9d3b69dcfed4",
+        name=f"rnn_fine_tuning_with_model_52657b607487eb55d0403aad341f9d3b69dcfed4_trial_{trial.number}",
         reinit=True
     )
     try:
@@ -333,10 +333,21 @@ def objective(trial):
         # Log detailed metrics
         f1_score_testing = log_detailed_metrics(targets, predictions)
         
-        logger.info("Currently best F1-Score: %s", best_f1_score)
-        if f1_score_testing > best_f1_score:
-            logger.info("New best F1-Score: %s", f1_score_testing)
-            torch.save(model.state_dict(), os.path.join(args.output_dir, f"{args.model}/best_model_trial_{trial.number}.pth"))
+        model_path = os.path.join(args.output_dir, f"{args.model}/final_model_trial_{trial.number}.pth")
+        logger.info("Saving final model to: %s", model_path)
+        torch.save(model.state_dict(), model_path)
+        
+        artifact = wandb.Artifact(
+                    name=f'model-trial-{trial.number}',
+                    type='model',
+                    description=f'Best model for trial {trial.number} with F1={f1_score_testing:.4f}'
+                )
+        artifact.add_file(model_path, f"final_model_trial_{trial.number}.pth")
+        artifact.save()
+        # run.log_artifact(artifact)
+
+        
+
         # Return AUC-ROC as the objective metric
         auc_roc = roc_auc_score(targets, predictions)
 
