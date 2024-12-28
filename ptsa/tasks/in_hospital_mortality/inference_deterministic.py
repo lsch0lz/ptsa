@@ -112,9 +112,9 @@ if normalizer_state is None:
 normalizer.load_params(normalizer_state)
 
 # Load data
-train_raw_data = load_data(train_reader, discretizer, normalizer, True)
-val_raw_data = load_data(val_reader, discretizer, normalizer, True)
-test_raw_data = load_data(test_reader, discretizer, normalizer, True)
+train_raw_data = load_data(train_reader, discretizer, normalizer, False)
+val_raw_data = load_data(val_reader, discretizer, normalizer, False)
+test_raw_data = load_data(test_reader, discretizer, normalizer, False)
 
 train_raw = even_out_number_of_data_points(train_raw_data)
 val_raw = even_out_number_of_data_points(val_raw_data)
