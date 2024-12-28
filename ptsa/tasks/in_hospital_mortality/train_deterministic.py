@@ -132,9 +132,9 @@ def objective(trial):
 
     # Initialize wandb run for this trial
     wandb.init(
-        project="ihm_RNN_optuna", 
-        group=f"rnn_fine_tuning_with_model_52657b607487eb55d0403aad341f9d3b69dcfed4",
-        name=f"rnn_fine_tuning_with_model_52657b607487eb55d0403aad341f9d3b69dcfed4_trial_{trial.number}",
+        project="ihm_GRU_optuna", 
+        group=f"GRU_fine_tuning_with_model_2b28b42a2cafb3e2813506faacb7a55aeeb84e79",
+        name=f"GRU_fine_tuning_with_model_2b28b42a2cafb3e2813506faacb7a55aeeb84e79_trial_{trial.number}",
         reinit=True
     )
     try:
