@@ -130,9 +130,9 @@ def objective(trial):
 
     # Initialize wandb run for this trial
     wandb.init(
-        project="ihm_LSTM_Probabilitic_optuna", 
-        group=f"LSTM_Probabilistic_with_model_2b28b42a2cafb3e2813506faacb7a55aeeb84e79",
-        name=f"LSTM_Probabilistic_with_model_2b28b42a2cafb3e2813506faacb7a55aeeb84e79_trial_{trial.number}",
+        project="ihm_RNN_Probabilitic_optuna", 
+        group=f"RNN_Probabilistic_with_model_a79c1f4cb6c3fde8d4bb007ee8679d44b299becd",
+        name=f"RNN_Probabilistic_with_model_a79c1f4cb6c3fde8d4bb007ee8679d44b299becd_trial_{trial.number}",
         reinit=True
     )
     try:
