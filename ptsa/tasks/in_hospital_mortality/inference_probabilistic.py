@@ -149,4 +149,4 @@ class IHMProbabilisticInference:
                 all_targets.append(y.cpu().numpy())
 
 
-        return all_predictions, all_uncertainties 
+        return all_predictions, all_uncertainties, all_targets 
