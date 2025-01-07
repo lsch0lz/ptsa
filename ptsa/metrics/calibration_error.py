@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import stats
+from matplotlib.ticker import MaxNLocator
 
 from ptsa.tasks.in_hospital_mortality.inference_probabilistic import IHMProbabilisticInference
 
@@ -40,25 +41,7 @@ def calculate_bca_confidence_intervals(data, statistic_func, confidence_level=0.
 
 def create_error_based_calibration_plot(y_true, predicted_means, predicted_variances, n_bins=20):
     """
-    Create error-based calibration plot as described in Rasmussen et al. 2023
-    
-    Parameters:
-    -----------
-    y_true : array-like
-        Ground truth values
-    predicted_means : array-like
-        Predicted mean values
-    predicted_variances : array-like
-        Predicted variance values
-    n_bins : int
-        Number of bins for grouping predictions
-    
-    Returns:
-    --------
-    fig : matplotlib figure
-        The calibration plot
-    metrics : dict
-        Dictionary containing R², slope, and intercept
+    Create error-based calibration plot with improved scaling and fixed aspect ratio
     """
     # Calculate errors
     errors = y_true - predicted_means
@@ -111,8 +94,8 @@ def create_error_based_calibration_plot(y_true, predicted_means, predicted_varia
     slope, intercept = np.polyfit(rmv_values, rmse_values, 1)
     r_squared = np.corrcoef(rmv_values, rmse_values)[0,1]**2
     
-    # Create plot
-    fig, ax = plt.subplots(figsize=(8, 6))
+    # Create plot with fixed size
+    fig, ax = plt.subplots(figsize=(8, 8))
     
     # Plot confidence intervals
     ax.fill_between(rmv_values, ci_lower, ci_upper, alpha=0.2, color='blue',
@@ -121,8 +104,14 @@ def create_error_based_calibration_plot(y_true, predicted_means, predicted_varia
     # Plot calibration points
     ax.scatter(rmv_values, rmse_values, color='blue', label='Observed')
     
-    # Plot fitted line
-    x_range = np.array([min(rmv_values), max(rmv_values)])
+        
+        
+    # Set equal limits for both axes
+    ax.set_xlim(0, np.max(rmv_values))
+    ax.set_ylim(0, np.max(rmse_values))
+    
+    # Plot fitted line using the full range
+    x_range = np.array([0, np.max(rmse_values)])
     ax.plot(x_range, slope * x_range + intercept, 'r--', 
             label=f'Fitted (R²={r_squared:.2f})')
     
@@ -134,8 +123,16 @@ def create_error_based_calibration_plot(y_true, predicted_means, predicted_varia
     ax.set_ylabel('RMSE (Root Mean Square Error)')
     ax.set_title('Error-based Calibration Plot')
     ax.legend()
-    ax.grid(True, alpha=0.3)
+    
+    # Add grid with better visibility
+    ax.grid(True, alpha=0.3, linestyle='--')
+    
+    # Ensure square aspect ratio
     ax.set_aspect('equal')
+    
+    # Add more tick marks for better readability
+    ax.xaxis.set_major_locator(MaxNLocator(10))
+    ax.yaxis.set_major_locator(MaxNLocator(10))
     
     metrics = {
         'R2': r_squared,
