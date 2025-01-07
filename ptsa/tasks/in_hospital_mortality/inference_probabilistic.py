@@ -27,9 +27,9 @@ from ptsa.models.probabilistic.gru_classification import GRU
 logging.basicConfig(level=logging.INFO)
 
 class IHMProbabilisticInference:
-    def __init__(self, config: Dict, data_path: str, model_path: str, model_name: str) -> None:
+    def __init__(self, config: Dict, data_path: str, model_path: str, model_name: str, device: str) -> None:
         self.logger = logging.getLogger(__name__)
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = device
         self.config = config 
         self.data_path = data_path
         self.model_path = model_path

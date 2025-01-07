@@ -41,7 +41,7 @@ def calculate_bca_confidence_intervals(data, statistic_func, confidence_level=0.
 
 def create_error_based_calibration_plot(y_true, predicted_means, predicted_variances, n_bins=20):
     """
-    Create error-based calibration plot with improved scaling and fixed aspect ratio
+    Create error-based calibration plot with custom aspect ratio and tight x-axis
     """
     # Calculate errors
     errors = y_true - predicted_means
@@ -64,18 +64,15 @@ def create_error_based_calibration_plot(y_true, predicted_means, predicted_varia
         start_idx = i * bin_size
         end_idx = start_idx + bin_size if i < n_bins - 1 else len(y_true)
         
-        # Get bin data
         bin_errors = sorted_errors[start_idx:end_idx]
         bin_variances = sorted_variances[start_idx:end_idx]
         
-        # Calculate RMSE and RMV
         rmse = np.sqrt(np.mean(bin_errors**2))
         rmv = np.sqrt(np.mean(bin_variances))
         
         rmse_values.append(rmse)
         rmv_values.append(rmv)
         
-        # Calculate 95% confidence intervals using BCa bootstrap
         ci = list(calculate_bca_confidence_intervals(
             bin_errors,
             lambda x: np.sqrt(np.mean(x**2)),
@@ -94,45 +91,53 @@ def create_error_based_calibration_plot(y_true, predicted_means, predicted_varia
     slope, intercept = np.polyfit(rmv_values, rmse_values, 1)
     r_squared = np.corrcoef(rmv_values, rmse_values)[0,1]**2
     
-    # Create plot with fixed size
-    fig, ax = plt.subplots(figsize=(8, 8))
+    # Create plot with rectangular size
+    fig, ax = plt.subplots(figsize=(10, 6))
     
     # Plot confidence intervals
     ax.fill_between(rmv_values, ci_lower, ci_upper, alpha=0.2, color='blue',
                    label='95% Confidence Interval')
     
     # Plot calibration points
-    ax.scatter(rmv_values, rmse_values, color='blue', label='Observed')
+    ax.scatter(rmv_values, rmse_values, color='blue')
     
-        
-        
-    # Set equal limits for both axes
-    ax.set_xlim(0, np.max(rmv_values))
-    ax.set_ylim(0, np.max(rmse_values))
+    # Set x-axis limit to max RMV value with small padding
+    x_max = np.max(rmv_values) * 1.2  # 20% padding
+    y_max = max(np.max(rmse_values), x_max) * 1.2  # Make sure identity line is visible
     
-    # Plot fitted line using the full range
-    x_range = np.array([0, np.max(rmse_values)])
+    # Set axis limits
+    ax.set_xlim(0, x_max)
+    ax.set_ylim(0, y_max)
+    
+    # Plot fitted line using the x-axis range
+    x_range = np.array([0, x_max])
     ax.plot(x_range, slope * x_range + intercept, 'r--', 
-            label=f'Fitted (R²={r_squared:.2f})')
+             label=f'R²={r_squared:.2f}')
     
     # Plot identity line
-    ax.plot(x_range, x_range, 'k-', label='Identity')
+    ax.axline((0, 0), (x_max, y_max), linewidth=1, color="k", linestyle="--")
     
     # Customize plot
-    ax.set_xlabel('RMV (Root Mean Variance)')
-    ax.set_ylabel('RMSE (Root Mean Square Error)')
-    ax.set_title('Error-based Calibration Plot')
-    ax.legend()
+    ax.set_xlabel('RMV (Root Mean Variance)', fontsize=12, labelpad=10)
+    ax.set_ylabel('RMSE (Root Mean Square Error)', fontsize=12, labelpad=10)
+    ax.set_title('Error-based Calibration Plot', fontsize=14, pad=20)
+    ax.legend(fontsize=10)
     
     # Add grid with better visibility
     ax.grid(True, alpha=0.3, linestyle='--')
     
-    # Ensure square aspect ratio
-    ax.set_aspect('equal')
+    # Remove equal aspect ratio constraint
+    ax.set_aspect('auto')
     
-    # Add more tick marks for better readability
+    # Add more tick marks with better spacing
     ax.xaxis.set_major_locator(MaxNLocator(10))
     ax.yaxis.set_major_locator(MaxNLocator(10))
+    
+    # Rotate x-axis labels for better readability
+    plt.xticks(rotation=45, ha='right')
+    
+    # Adjust layout to prevent label cutoff
+    plt.tight_layout()
     
     metrics = {
         'R2': r_squared,
@@ -159,7 +164,7 @@ if __name__ == "__main__":
     model_path = "/vol/tmp/scholuka/ptsa/data/models/in_hospital_mortality/rnn_probabilistic/final_model_trial_8.pth"
 
 
-    inference_session = IHMProbabilisticInference(config=config, data_path=data_path, model_path=model_path, model_name="RNN")
+    inference_session = IHMProbabilisticInference(config=config, data_path=data_path, model_path=model_path, model_name="RNN", device="cuda")
     _, _, test_data = inference_session.load_test_data()
 
     predicted_means, predicted_variances, y_true = inference_session.infer_on_data_points(test_data)
