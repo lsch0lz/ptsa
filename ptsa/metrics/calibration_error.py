@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from scipy import stats
 from matplotlib.ticker import MaxNLocator
 
-from ptsa.tasks.in_hospital_mortality.inference_probabilistic import IHMProbabilisticInference
+from ptsa.tasks.length_of_stay.inference_probabilistic import IHMProbabilisticInference
 
 
 def calculate_bca_confidence_intervals(data, statistic_func, confidence_level=0.95, n_bootstraps=1000):
@@ -44,7 +44,7 @@ def create_error_based_calibration_plot(y_true, predicted_means, predicted_varia
     Create error-based calibration plot with custom aspect ratio and tight x-axis
     """
     # Calculate errors
-    errors = y_true - predicted_means
+    errors = abs(y_true - predicted_means)
     
     # Sort by predicted uncertainty
     sorted_indices = np.argsort(predicted_variances)
@@ -63,7 +63,7 @@ def create_error_based_calibration_plot(y_true, predicted_means, predicted_varia
     for i in range(n_bins):
         start_idx = i * bin_size
         end_idx = start_idx + bin_size if i < n_bins - 1 else len(y_true)
-        
+
         bin_errors = sorted_errors[start_idx:end_idx]
         bin_variances = sorted_variances[start_idx:end_idx]
         
@@ -151,20 +151,20 @@ def create_error_based_calibration_plot(y_true, predicted_means, predicted_varia
 if __name__ == "__main__":
     config = {
             "input_size": 76,
-            "hidden_size": 248,
-            "num_layers": 1,
-            "learning_rate": 0.00001069901749223866,
-            "dropout": 0.5767284766833869,
+            "hidden_size": 64,
+            "num_layers": 2,
+            "learning_rate": 0.001,
+            "dropout": 0.2,
             "batch_size": 64,
-            "num_epochs": 38,
+            "num_epochs": 5,
             "weight_decay": 0.001288495142480056,
-            "num_mc_samples": 100
+            "num_mc_samples": 25
             }
-    data_path = "/vol/tmp/scholuka/mimic-iv-benchmarks/data/in-hospital-mortality/"
-    model_path = "/vol/tmp/scholuka/ptsa/data/models/in_hospital_mortality/rnn_probabilistic/final_model_trial_8.pth"
+    data_path = "/vol/tmp/scholuka/mimic-iv-benchmarks/data/length-of-stay/"
+    model_path = "/vol/tmp/scholuka/ptsa/data/models/length_of_stay/probabilistic/rnn_test_inference.pth"
 
 
-    inference_session = IHMProbabilisticInference(config=config, data_path=data_path, model_path=model_path, model_name="RNN", device="cuda")
+    inference_session = IHMProbabilisticInference(config=config, data_path=data_path, model_path=model_path, model_name="RNN", device="cuda:3")
     _, _, test_data = inference_session.load_test_data()
 
     predicted_means, predicted_variances, y_true = inference_session.infer_on_data_points(test_data)
@@ -172,22 +172,6 @@ if __name__ == "__main__":
     predicted_means = np.array(predicted_means).flatten()
     predicted_variances = np.array(predicted_variances).flatten()
     y_true = np.array(y_true).flatten()
-    
-
-    np.random.seed(42)
-    n_samples = 5000
-    
-    # Generate more representative example data
-    # True values follow a normal distribution
-    # y_true = np.random.normal(0, 2, n_samples)
-    
-    # Add heteroscedastic noise to predictions
-    noise_scale = 0.1 + 0.2 * np.abs(y_true)  # Noise increases with magnitude
-    # predicted_means = y_true + np.random.normal(0, noise_scale, n_samples)
-    
-    # Generate variances that somewhat correlate with actual errors
-    base_uncertainty = noise_scale**2  # True uncertainty
-    # predicted_variances = base_uncertainty * (0.7 + 0.6 * np.random.random(n_samples))
     
     # Sort predictions by uncertainty to create a clearer trend
     sort_idx = np.argsort(predicted_variances)

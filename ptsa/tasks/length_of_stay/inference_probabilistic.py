@@ -15,14 +15,15 @@ import random
 import matplotlib.pyplot as plt
 from sklearn.metrics import precision_recall_curve, average_precision_score, accuracy_score, precision_score, recall_score, roc_auc_score, f1_score
 
-from ptsa.tasks.readers import InHospitalMortalityReader
+from ptsa.tasks.readers import LengthOfStayReader
 from ptsa.utils.preprocessing import Discretizer, Normalizer
 from ptsa.tasks.in_hospital_mortality.utils import load_data
 from ptsa.utils import utils
 
-from ptsa.models.probabilistic.lstm_classification import LSTM 
-from ptsa.models.probabilistic.rnn_classification import RNN
-from ptsa.models.probabilistic.gru_classification import GRU
+from ptsa.tasks.length_of_stay.utils import BatchGen
+from ptsa.models.probabilistic.bayesian_lstm import LSTM 
+from ptsa.models.probabilistic.rnn import RNN
+from ptsa.models.probabilistic.gru import GRU
 
 logging.basicConfig(level=logging.INFO)
 
@@ -76,50 +77,66 @@ class IHMProbabilisticInference:
 
     
     def load_test_data(self):
-        # Data loading and preprocessing
-        all_reader = InHospitalMortalityReader(
-            dataset_dir=os.path.join(self.data_path, 'train'), 
-            listfile=os.path.join(self.data_path, 'train/listfile.csv'), 
-            period_length=48.0
-        )
+        all_data = LengthOfStayReader(dataset_dir=os.path.join(self.data_path, 'train'),
+                                        listfile=os.path.join(self.data_path, 'train/listfile.csv'))
 
-        train_data, val_data = train_test_split(all_reader._data, test_size=0.2, random_state=43)
+        train_data, val_data = train_test_split(all_data._data, test_size=0.2, random_state=42)
 
-        train_reader = InHospitalMortalityReader(dataset_dir=os.path.join(self.data_path, 'train'), listfile=os.path.join(self.data_path, 'train/listfile.csv'), period_length=48.0)
+        train_reader = LengthOfStayReader(dataset_dir=os.path.join(self.data_path, 'train'))
         train_reader._data = train_data
 
-        val_reader = InHospitalMortalityReader(dataset_dir=os.path.join(self.data_path, 'train'), listfile=os.path.join(self.data_path, 'train/listfile.csv'), period_length=48.0)
+        val_reader = LengthOfStayReader(dataset_dir=os.path.join(self.data_path, 'train'))
         val_reader._data = val_data
 
-        test_reader = InHospitalMortalityReader(dataset_dir=os.path.join(self.data_path, 'test'), listfile=os.path.join(self.data_path, 'test/listfile.csv'), period_length=48.0)
 
-        # Discretizer and Normalizer setup (similar to original script)
-        discretizer = Discretizer(
-            timestep=float(1.0), 
-            store_masks=True, 
-            impute_strategy='previous',
-            start_time='zero'
-        )
+        test_reader = LengthOfStayReader(dataset_dir=os.path.join(self.data_path, "test"),
+                                        listfile=os.path.join(self.data_path, "test/listfile.csv"))
+        # test_reader = LengthOfStayReader(dataset_dir=os.path.join(args.data, 'train'))
+        # test_reader._data = test_data
+
+        discretizer = Discretizer(timestep=1.0,
+                                    store_masks=True,
+                                    impute_strategy='previous',
+                                    start_time='zero')
+
         discretizer_header = discretizer.transform(train_reader.read_example(0)["X"])[1].split(',')
         cont_channels = [i for (i, x) in enumerate(discretizer_header) if x.find("->") == -1]
 
         normalizer = Normalizer(fields=cont_channels)
         normalizer_state = None
+
         if normalizer_state is None:
-            normalizer_state = f'ihm_ts1.0.input_str_previous.start_time_zero.normalizer'
+            normalizer_state = 'los_ts{}.input_str_previous.start_time_zero.n5e4.normalizer'.format("1.0")
             normalizer_state = os.path.join(os.path.dirname(__file__), normalizer_state)
+
         normalizer.load_params(normalizer_state)
 
-        # Load data
-        train_raw_data = load_data(train_reader, discretizer, normalizer, False)
-        val_raw_data = load_data(val_reader, discretizer, normalizer, False)
-        test_raw_data = load_data(test_reader, discretizer, normalizer, False)
+        train_data_gen = BatchGen(reader=train_reader,
+                                    discretizer=discretizer,
+                                    normalizer=normalizer,
+                                    batch_size=self.config["batch_size"],
+                                    steps=None,
+                                    shuffle=True,
+                                    partition="custom")
 
-        train_raw = self.even_out_number_of_data_points(train_raw_data)
-        val_raw = self.even_out_number_of_data_points(val_raw_data)
-        test_raw = self.even_out_number_of_data_points(test_raw_data)
+        val_data_gen = BatchGen(reader=val_reader,
+                                discretizer=discretizer,
+                                normalizer=normalizer,
+                                batch_size=self.config["batch_size"],
+                                steps=None,
+                                shuffle=False,
+                                partition="custom")
 
-        return train_raw, val_raw, test_raw
+        test_data_gen = BatchGen(reader=test_reader,
+                                    discretizer=discretizer,
+                                    normalizer=normalizer,
+                                    batch_size=self.config["batch_size"],
+                                    steps=None,
+                                    shuffle=False,
+                                    partition="custom")
+
+
+        return train_data_gen, val_data_gen, test_data_gen
 
     def infer_on_data_points(self, test_data):
         model = self._load_model()
@@ -132,15 +149,11 @@ class IHMProbabilisticInference:
         all_uncertainties = []
 
         with torch.no_grad():
-            for i in range(len(test_data[0])):
-                x, y = test_data[0][i], test_data[1]
+            for i in range(test_data.steps):
+                batch = next(test_data)
+                x, y = batch
                 x = torch.FloatTensor(x).to(self.device)
-                y = torch.FloatTensor([y[i] if isinstance(y, (list, np.ndarray)) else y]).to(self.device)
-
-                if x.dim() == 2:
-                    x = x.unsqueeze(0)
-                
-                # outputs = model(x).view(-1)
+                y = torch.FloatTensor(y).to(self.device)
 
                 mean, variance = model.predict_with_uncertainty(x, num_samples=self.config["num_mc_samples"])
                 
