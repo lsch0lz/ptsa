@@ -164,7 +164,13 @@ if __name__ == "__main__":
     model_path = "/vol/tmp/scholuka/ptsa/data/models/length_of_stay/probabilistic/rnn_test_inference.pth"
 
 
-    inference_session = IHMProbabilisticInference(config=config, data_path=data_path, model_path=model_path, model_name="RNN", device="cuda:3")
+    inference_session = IHMProbabilisticInference(config=config, 
+                                                  data_path=data_path, 
+                                                  model_path=model_path,
+                                                  model_name="RNN", 
+                                                  device="cuda:3",
+                                                  num_batches_inference=1000,
+                                                  limit_num_test_sampled=True)
     _, _, test_data = inference_session.load_test_data()
 
     predicted_means, predicted_variances, y_true = inference_session.infer_on_data_points(test_data)

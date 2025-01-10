@@ -28,13 +28,21 @@ from ptsa.models.probabilistic.gru import GRU
 logging.basicConfig(level=logging.INFO)
 
 class IHMProbabilisticInference:
-    def __init__(self, config: Dict, data_path: str, model_path: str, model_name: str, device: str) -> None:
+    def __init__(self, config: Dict, 
+                 data_path: str, 
+                 model_path: str, 
+                 model_name: str, 
+                 device: str, 
+                 num_batches_inference: int,
+                 limit_num_test_sampled: bool) -> None:
         self.logger = logging.getLogger(__name__)
         self.device = device
         self.config = config 
         self.data_path = data_path
         self.model_path = model_path
         self.model_name = model_name
+        self.num_batches_inference = num_batches_inference * 64
+        self.limit_num_test_sampled = limit_num_test_sampled
 
     def _load_model(self):
         if self.model_name == "LSTM":
@@ -91,6 +99,14 @@ class IHMProbabilisticInference:
 
         test_reader = LengthOfStayReader(dataset_dir=os.path.join(self.data_path, "test"),
                                         listfile=os.path.join(self.data_path, "test/listfile.csv"))
+        if self.limit_num_test_sampled:
+            if self.num_batches_inference > len(test_reader._data):
+                raise ValueError(f"Requested amount of data is too high. Try lower num of batches")
+            
+            max_start_idx = len(test_reader._data) - self.num_batches_inference
+            start_idx = np.random.randint(0, max_start_idx + 1)
+            
+            test_reader._data = test_reader._data[start_idx:start_idx + self.num_batches_inference]
         # test_reader = LengthOfStayReader(dataset_dir=os.path.join(args.data, 'train'))
         # test_reader._data = test_data
 
