@@ -66,9 +66,9 @@ def objective(trial):
 
     # Initialize wandb run for this trial
     wandb.init(
-        project="probabilistic_gru_los", 
-        group=f"gru_optuna_test_small_dataset",
-        name=f"gru_optuna_test_small_dataset_trial_{trial.number}",
+        project=f"probabilistic_{args.model}_los", 
+        group=f"{args.model}_optuna_test_small_dataset",
+        name=f"{args.model}_optuna_test_small_dataset_trial_{trial.number}",
         reinit=True
     )
     try:
