@@ -1,5 +1,7 @@
 import os
 import argparse
+import random
+import math
 
 import torch
 from torch import nn
@@ -41,9 +43,48 @@ parser.add_argument('--num_mc_samples', type=int, default=25, help='Number of Mo
 
 parser.add_argument("--model", type=str, default="lstm", help="lstm, rnn, gru, transformer")
 
+parser.add_argument("--dataset_fraction", type=float, default=1.0, help="fraction of data that is being kept. 0.5 is half the data")
+
 parser.add_argument("--model_name", type=str, help="Name for the model file")
 
 args = parser.parse_args()
+
+
+def get_random_slice(data_length, batch_size, target_fraction=0.5):
+    """
+    Get random start and end indices for slicing data, ensuring:
+    1. The slice size is divisible by batch_size
+    2. The slice is not smaller than batch_size
+    3. The slice is approximately the target fraction of the data
+    
+    Args:
+        data_length (int): Total length of the dataset
+        batch_size (int): Batch size to ensure divisibility
+        target_fraction (float): Desired fraction of data to keep (default: 0.5)
+    
+    Returns:
+        tuple: (start_idx, end_idx) for slicing the data
+    """
+    # Ensure the target slice size is divisible by batch_size
+    target_size = math.floor(data_length * target_fraction)
+    adjusted_size = (target_size // batch_size) * batch_size
+    
+    # Ensure we're not going below batch_size
+    slice_size = max(adjusted_size, batch_size)
+    
+    # Calculate maximum valid start index
+    max_start = data_length - slice_size
+    
+    # Get random start index that's divisible by batch_size
+    valid_starts = list(range(0, max_start + 1, batch_size))
+    if not valid_starts:
+        # If no valid starts found, return first possible slice
+        return 0, batch_size
+    
+    start_idx = random.choice(valid_starts)
+    end_idx = start_idx + slice_size
+    
+    return start_idx, end_idx
 
 config = {
     "input_size": 76,
@@ -87,12 +128,37 @@ if args.num_train_samples is not None:
 train_reader = LengthOfStayReader(dataset_dir=os.path.join(args.data, 'train'))
 train_reader._data = train_data
 
+if args.dataset_fraction:
+    start_idx, end_idx = get_random_slice(
+        data_length=len(train_reader._data),
+        batch_size=config["batch_size"],
+        target_fraction=args.dataset_fraction
+    )
+    train_reader._data = train_reader._data[start_idx:end_idx]
+
 val_reader = LengthOfStayReader(dataset_dir=os.path.join(args.data, 'train'))
 val_reader._data = val_data
+
+if args.dataset_fraction:
+    start_idx, end_idx = get_random_slice(
+        data_length=len(val_reader._data),
+        batch_size=config["batch_size"],
+        target_fraction=args.dataset_fraction
+    )
+    val_reader._data = val_reader._data[start_idx:end_idx]
 
 
 test_reader = LengthOfStayReader(dataset_dir=os.path.join(args.data, "test"),
                                  listfile=os.path.join(args.data, "test/listfile.csv"))
+
+if args.dataset_fraction:
+    start_idx, end_idx = get_random_slice(
+        data_length=len(test_reader._data),
+        batch_size=config["batch_size"],
+        target_fraction=args.dataset_fraction
+    )
+    test_reader._data = test_reader._data[start_idx:end_idx]
+
 # test_reader = LengthOfStayReader(dataset_dir=os.path.join(args.data, 'train'))
 # test_reader._data = test_data
 
@@ -141,6 +207,7 @@ test_data_gen = BatchGen(reader=test_reader,
 # Training loop
 print(f"Number of Steps in Train Data: {train_data_gen.steps}")
 print(f"Number of Steps in Validation Data: {val_data_gen.steps}")
+print(f"Number of Steps in Test Data: {test_data_gen.steps}")
 
 best_val_loss = float("inf")
 for epoch in range(config["num_epochs"]):
