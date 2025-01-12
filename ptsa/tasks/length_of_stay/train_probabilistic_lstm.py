@@ -17,6 +17,7 @@ from ptsa.tasks.length_of_stay.utils import utils
 from ptsa.models.probabilistic.bayesian_lstm import LSTM
 from ptsa.models.probabilistic.rnn import RNN
 from ptsa.models.probabilistic.gru import GRU
+from ptsa.models.probabilistic.transformer import TransformerLOS
 
 # EXAMPLE USAGE
 # python ptsa/tasks/length_of_stay/train_probabilistic_lstm.py --data /vol/tmp/scholuka/mimic-iv-benchmarks/data/length-of-stay --network ptsa/models/probabilistic/gru.py --model_name test_gru --model gru
@@ -97,9 +98,17 @@ config = {
     "num_mc_samples": args.num_mc_samples
 }
 
+transformer_config = {
+    "input_size": 76,
+    "d_model": 128,                 # Transformer embedding dimension
+    "nhead": 8,                     # Number of attention heads
+    "num_layers": 3,               # Number of transformer layers
+    "dropout": 0.2
+}
+
 wandb.init(project=f"probabilistic_{args.model}_los", config=config)
 
-device = "cuda" if torch.cuda.is_available() else "cpu" 
+device = "cuda:2" if torch.cuda.is_available() else "cpu" 
 
 model = nn.Module()
 if args.model == "lstm":
@@ -108,6 +117,13 @@ elif args.model == "rnn":
     model = RNN(config["input_size"], config["hidden_size"], config["num_layers"], config["dropout"]).to(device)
 elif args.model == "gru": 
     model = GRU(config["input_size"], config["hidden_size"], config["num_layers"], config["dropout"]).to(device)
+elif args.model == "transformer":
+    model = TransformerLOS(input_size=transformer_config["input_size"],
+                           d_model=transformer_config["d_model"],
+                           nhead=transformer_config["nhead"],
+                           num_layers=transformer_config["num_layers"],
+                           dropout=transformer_config["dropout"]).to(device)
+
 
 print(f"Model device: {next(model.parameters()).device}")
 
