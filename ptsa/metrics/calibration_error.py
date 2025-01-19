@@ -105,9 +105,11 @@ def create_error_based_calibration_plot(y_true, predicted_means, predicted_varia
     x_max = np.max(rmv_values) * 1.2  # 20% padding
     y_max = max(np.max(rmse_values), x_max) * 1.2  # Make sure identity line is visible
     
+    max_limit = max(np.max(rmv_values), np.max(rmse_values)) * 1.2
+
     # Set axis limits
-    ax.set_xlim(0, x_max)
-    ax.set_ylim(0, y_max)
+    ax.set_xlim(0, max_limit)
+    ax.set_ylim(0, max_limit)
     
     # Plot fitted line using the x-axis range
     x_range = np.array([0, x_max])
@@ -115,8 +117,8 @@ def create_error_based_calibration_plot(y_true, predicted_means, predicted_varia
              label=f'R²={r_squared:.2f}')
     
     # Plot identity line
-    ax.axline((0, 0), (x_max, y_max), linewidth=1, color="k", linestyle="--")
-    
+    ax.plot([0, max_limit], [0, max_limit], color="k", linestyle="--", linewidth=1, label='Identity Line')
+
     # Customize plot
     ax.set_xlabel('RMV (Root Mean Variance)', fontsize=12, labelpad=10)
     ax.set_ylabel('RMSE (Root Mean Square Error)', fontsize=12, labelpad=10)
@@ -127,8 +129,8 @@ def create_error_based_calibration_plot(y_true, predicted_means, predicted_varia
     ax.grid(True, alpha=0.3, linestyle='--')
     
     # Remove equal aspect ratio constraint
-    ax.set_aspect('auto')
-    
+    ax.set_aspect('equal', adjustable='box')
+
     # Add more tick marks with better spacing
     ax.xaxis.set_major_locator(MaxNLocator(10))
     ax.yaxis.set_major_locator(MaxNLocator(10))
@@ -154,20 +156,20 @@ if __name__ == "__main__":
             "hidden_size": 64,
             "num_layers": 2,
             "learning_rate": 0.001,
-            "dropout": 0.2,
+            "dropout": 0.5,
             "batch_size": 64,
             "num_epochs": 5,
             "weight_decay": 0.001288495142480056,
-            "num_mc_samples": 25
+            "num_mc_samples": 100
             }
     data_path = "/vol/tmp/scholuka/mimic-iv-benchmarks/data/length-of-stay/"
-    model_path = "/vol/tmp/scholuka/ptsa/data/models/length_of_stay/probabilistic/rnn_test_inference.pth"
+    model_path = "/vol/tmp/scholuka/ptsa/data/models/length_of_stay/probabilistic/aleatoric_lstm.pth"
 
 
     inference_session = IHMProbabilisticInference(config=config, 
                                                   data_path=data_path, 
                                                   model_path=model_path,
-                                                  model_name="RNN", 
+                                                  model_name="LSTM", 
                                                   device="cuda:3",
                                                   num_batches_inference=1000,
                                                   limit_num_test_sampled=True)
