@@ -93,6 +93,15 @@ class IHMProbabilisticInference:
         train_reader = LengthOfStayReader(dataset_dir=os.path.join(self.data_path, 'train'))
         train_reader._data = train_data
 
+        if self.limit_num_test_sampled:
+            if self.num_batches_inference > len(train_reader._data):
+                raise ValueError(f"Requested amount of data is too high. Try lower num of batches")
+            
+            max_start_idx = len(train_reader._data) - self.num_batches_inference
+            start_idx = np.random.randint(0, max_start_idx + 1)
+            
+            train_reader._data = train_reader._data[start_idx:start_idx + self.num_batches_inference]
+        
         val_reader = LengthOfStayReader(dataset_dir=os.path.join(self.data_path, 'train'))
         val_reader._data = val_data
 
