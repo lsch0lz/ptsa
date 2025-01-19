@@ -19,6 +19,7 @@ from ptsa.tasks.length_of_stay.utils import utils
 from ptsa.models.probabilistic.bayesian_lstm import LSTM
 from ptsa.models.probabilistic.rnn import RNN
 from ptsa.models.probabilistic.gru import GRU
+from ptsa.models.probabilistic.transformer import TransformerLOS
 
 # EXAMPLE USAGE
 # python ptsa/tasks/length_of_stay/train_probabilistic_lstm.py --data /vol/tmp/scholuka/mimic-iv-benchmarks/data/length-of-stay --network ptsa/models/probabilistic/gru.py --model_name test_gru --model gru
@@ -84,9 +85,25 @@ def objective(trial):
             "num_mc_samples": 100
         }
 
+        if args.model == "transformer":
+            config = {
+                "input_size": 76,
+                "d_model": trial.suggest_int("d_model", 32, 256, step=32),
+                "num_layers": trial.suggest_int('num_layers', 1, 4),
+                "nhead": trial.suggest_int("nhead", 2, 8),
+                "dim_feedforward": trial.suggest_int("dim_feedforward", 64, 512, step=64),
+                "learning_rate": trial.suggest_float("learning_rate", 1e-5, 1e-3, log=True),
+                "dropout": trial.suggest_float("dropout", 0.2, 0.8),
+                "batch_size": trial.suggest_categorical('batch_size', [32, 64, 128]),
+                "num_mc_samples": 100,
+                "num_epochs": trial.suggest_int('num_epochs', 5, 15),
+            }
+
+            config["nhead"] = min(config["nhead"], config["d_model"] // 16)
+
         wandb.config.update(config)
         
-        device = "cuda" if torch.cuda.is_available() else "cpu" 
+        device = "cuda:2" if torch.cuda.is_available() else "cpu" 
 
         model = nn.Module()
         if args.model == "lstm":
@@ -95,6 +112,14 @@ def objective(trial):
             model = RNN(config["input_size"], config["hidden_size"], config["num_layers"], config["dropout"]).to(device)
         elif args.model == "gru": 
             model = GRU(config["input_size"], config["hidden_size"], config["num_layers"], config["dropout"]).to(device)
+        elif args.model == "transformer":
+            model = TransformerLOS(input_size=config["input_size"],
+                                d_model=config["d_model"],
+                                nhead=config["nhead"],
+                                num_layers=config["num_layers"],
+                                dropout=config["dropout"],
+                                dim_feedforward=config["dim_feedforward"]).to(device)
+
 
         print(f"Model device: {next(model.parameters()).device}")
 
