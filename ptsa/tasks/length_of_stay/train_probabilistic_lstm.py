@@ -40,7 +40,7 @@ parser.add_argument('--output_dir', type=str, help='Directory relative which all
 
 parser.add_argument('--num_train_samples', type=int, default=None, help='Number of training samples to use')
 
-parser.add_argument('--num_mc_samples', type=int, default=25, help='Number of Monte Carlo samples for uncertainty estimation')
+parser.add_argument('--num_mc_samples', type=int, default=100, help='Number of Monte Carlo samples for uncertainty estimation')
 
 parser.add_argument("--model", type=str, default="lstm", help="lstm, rnn, gru, transformer")
 
@@ -94,7 +94,7 @@ config = {
     "learning_rate": 0.001,
     "num_epochs": 5,
     "batch_size": 64,
-    "dropout": 0.2,
+    "dropout": 0.5,
     "num_mc_samples": args.num_mc_samples
 }
 
@@ -135,7 +135,6 @@ optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"])
 all_data = LengthOfStayReader(dataset_dir=os.path.join(args.data, 'train'),
                                 listfile=os.path.join(args.data, 'train/listfile.csv'))
 
-print(f"Len ALL DATA Reader: {len(all_data._data)}")
 train_data, val_data = train_test_split(all_data._data, test_size=0.2, random_state=42)
 # train_val_data, test_data = train_test_split(all_data._data, test_size=0.2, random_state=42)
 # train_data, val_data = train_test_split(train_val_data, test_size=0.2, random_state=42)
@@ -148,13 +147,7 @@ if args.num_train_samples is not None:
 
 train_reader = LengthOfStayReader(dataset_dir=os.path.join(args.data, 'train'))
 train_reader._data = train_data
-"""
-for i in range(len(train_reader._data)):
-    print(f"Reading Sample {i}")
-    los = train_reader.read_example(i)["y"]
-    all_los_values.append(los)
-    train_los_values.append(los)
-"""
+
 if args.dataset_fraction:
     start_idx, end_idx = get_random_slice(
         data_length=len(train_reader._data),
@@ -165,12 +158,7 @@ if args.dataset_fraction:
 
 val_reader = LengthOfStayReader(dataset_dir=os.path.join(args.data, 'train'))
 val_reader._data = val_data
-"""
-for i in range(len(val_reader._data)):
-    los = val_reader.read_example(i)["y"]
-    all_los_values.append(los)
-    train_los_values.append(los)
-"""
+
 if args.dataset_fraction:
     start_idx, end_idx = get_random_slice(
         data_length=len(val_reader._data),
@@ -182,33 +170,7 @@ if args.dataset_fraction:
 
 test_reader = LengthOfStayReader(dataset_dir=os.path.join(args.data, "test"),
                                  listfile=os.path.join(args.data, "test/listfile.csv"))
-"""
-for i in range(len(test_reader._data)):
-    los = test_reader.read_example(i)["y"]
-    all_los_values.append(los)
-    test_los_values.append(los)
-"""
-from matplotlib import pyplot as plt
-plt.hist(all_los_values)
-plt.title('LoS of all Patients')  # Title
-plt.xlabel('Length-of-Stay in hours')  # X-axis label
-plt.ylabel('Frequency')
-plt.savefig('los_all_patients.png')
 
-"""
-plt.hist(train_los_values)
-plt.title('LoS of all Patients in Train/Val')  # Title
-plt.xlabel('Length-of-Stay in hours')  # X-axis label
-plt.ylabel('Frequency')
-plt.savefig('los_train_val_patients.png')
-
-plt.hist(test_los_values)
-plt.title('LoS of all Patients in Test')  # Title
-plt.xlabel('Length-of-Stay in hours')  # X-axis label
-plt.ylabel('Frequency')
-plt.savefig('los_test_patients.png')
-"""
-print("Created all Plots")
 if args.dataset_fraction:
     start_idx, end_idx = get_random_slice(
         data_length=len(test_reader._data),
