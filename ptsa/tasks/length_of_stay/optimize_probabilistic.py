@@ -71,8 +71,8 @@ def objective(trial):
     # Initialize wandb run for this trial
     wandb.init(
         project=f"probabilistic_{args.model}_los", 
-        group=f"{args.model}_optuna_test_small_dataset",
-        name=f"{args.model}_optuna_test_small_dataset_trial_{trial.number}",
+        group=f"{args.model}_fixed_mc_dropout_optuna_test_small_dataset",
+        name=f"{args.model}_fixed_optuna_dropout_optuna_test_small_dataset_trial_{trial.number}",
         reinit=True
     )
     try:
@@ -106,7 +106,7 @@ def objective(trial):
 
         wandb.config.update(config)
         
-        device = "cuda:2" if torch.cuda.is_available() else "cpu" 
+        device = "cuda:1" if torch.cuda.is_available() else "cpu" 
 
         model = nn.Module()
         if args.model == "lstm":
