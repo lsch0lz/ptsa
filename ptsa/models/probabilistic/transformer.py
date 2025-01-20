@@ -1,12 +1,13 @@
 import torch
 from torch import nn
+import torch.nn.functional as F
 import math
 from typing import Optional, Tuple
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model: int, max_seq_length: int = 5000, dropout: float = 0.1):
         super().__init__()
-        self.dropout = nn.Dropout(p=dropout)
+        self.dropout_rate = dropout
 
         position = torch.arange(max_seq_length).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
@@ -16,43 +17,38 @@ class PositionalEncoding(nn.Module):
         self.register_buffer('pe', pe)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            x: Tensor, shape [batch_size, seq_len, embedding_dim]
-        """
         x = x + self.pe[:, :x.size(1)]
-        return self.dropout(x)
+        return F.dropout(x, p=self.dropout_rate, training=self.training)
 
 class TransformerLOS(nn.Module):
     def __init__(
         self, 
         input_size: int,
         d_model: int = 128,
-        nhead: int = 4,  # Reduced from 8
-        num_layers: int = 2,  # Reduced from 3
-        dim_feedforward: int = 256,  # Reduced from 512
-        dropout: float = 0.1,  # Reduced from 0.2
-        activation: str = "gelu"  # Changed from relu
+        nhead: int = 4,
+        num_layers: int = 2,
+        dim_feedforward: int = 256,
+        dropout: float = 0.1,
+        activation: str = "gelu"
     ):
         super(TransformerLOS, self).__init__()
         
-        # Layer Normalization before projection
-        self.input_norm = nn.LayerNorm(input_size)
+        self.dropout_rate = dropout
         
-        # Input projection with smaller initialization
+        # Input normalization and projection
+        self.input_norm = nn.LayerNorm(input_size)
         self.input_projection = nn.Linear(input_size, d_model)
         torch.nn.init.xavier_uniform_(self.input_projection.weight, gain=0.1)
         
         self.pos_encoder = PositionalEncoding(d_model, dropout=dropout)
         
-        encoder_layer = nn.TransformerEncoderLayer(
+        # Custom encoder layer for MC dropout
+        encoder_layer = self._create_encoder_layer(
             d_model=d_model,
             nhead=nhead,
             dim_feedforward=dim_feedforward,
             dropout=dropout,
-            activation=activation,
-            batch_first=True,
-            norm_first=True  # Important: Apply normalization first
+            activation=activation
         )
         
         self.transformer_encoder = nn.TransformerEncoder(
@@ -60,54 +56,70 @@ class TransformerLOS(nn.Module):
             num_layers=num_layers
         )
         
-        # Additional normalization before final projection
+        # Shared feature processing
         self.final_norm = nn.LayerNorm(d_model)
-        self.dropout = nn.Dropout(dropout)
         
-        # Output projection with smaller initialization
-        self.fc = nn.Linear(d_model, 1)
-        torch.nn.init.xavier_uniform_(self.fc.weight, gain=0.1)
+        # Separate heads for mean and log variance
+        self.fc_mean = nn.Linear(d_model, 1)
+        self.fc_log_var = nn.Linear(d_model, 1)
+        
+        # Initialize output layers with smaller weights
+        torch.nn.init.xavier_uniform_(self.fc_mean.weight, gain=0.1)
+        torch.nn.init.xavier_uniform_(self.fc_log_var.weight, gain=0.1)
         
         self.d_model = d_model
-        self.dropout_rate = dropout
-        
+
+    def _create_encoder_layer(self, d_model, nhead, dim_feedforward, dropout, activation):
+        return nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=dim_feedforward,
+            dropout=0.0,  # Handle dropout manually
+            activation=activation,
+            batch_first=True,
+            norm_first=True
+        )
+
+    def _apply_dropout(self, x: torch.Tensor) -> torch.Tensor:
+        return F.dropout(x, p=self.dropout_rate, training=self.training)
+
     def forward(
         self, 
         src: torch.Tensor,
         src_mask: Optional[torch.Tensor] = None,
         src_key_padding_mask: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        """
-        Args:
-            src: Tensor, shape [batch_size, seq_len, input_size]
-            src_mask: Optional mask for self-attention
-            src_key_padding_mask: Optional mask for padded elements
-        """
-        # Normalize input
-        x = self.input_norm(src)
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        # Input dropout
+        x = self._apply_dropout(src)
         
-        # Project input to d_model dimensions with scaling
+        # Normalize and project input
+        x = self.input_norm(x)
         x = self.input_projection(x) * math.sqrt(self.d_model)
+        x = self._apply_dropout(x)
         
-        # Apply positional encoding
+        # Positional encoding
         x = self.pos_encoder(x)
         
-        # Apply transformer encoder
+        # Transformer encoding
         x = self.transformer_encoder(
             x,
             mask=src_mask,
             src_key_padding_mask=src_key_padding_mask
         )
+        x = self._apply_dropout(x)
         
-        # Use the last sequence element for prediction
+        # Use last sequence element
         x = x[:, -1, :]
         
-        # Final normalization and projection
+        # Final shared processing
         x = self.final_norm(x)
-        x = self.dropout(x)
-        x = self.fc(x)
+        x = self._apply_dropout(x)
         
-        return x.squeeze(-1)
+        # Generate mean and log variance predictions
+        mean = self.fc_mean(x).squeeze(-1)
+        log_var = self.fc_log_var(x).squeeze(-1)
+        
+        return mean, log_var
     
     def predict_with_uncertainty(
         self, 
@@ -117,18 +129,64 @@ class TransformerLOS(nn.Module):
         src_key_padding_mask: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Perform Monte Carlo Dropout inference to estimate uncertainty.
+        Perform Monte Carlo Dropout inference to estimate both epistemic and aleatoric uncertainty.
+        
+        Returns:
+            Tuple[Tensor, Tensor]: (mean predictions, total variance)
+                - total variance = epistemic uncertainty + aleatoric uncertainty
         """
         self.train()  # Enable dropout
         
         predictions = []
+        log_variances = []
+        
         with torch.no_grad():
             for _ in range(num_samples):
-                output = self(x, src_mask, src_key_padding_mask)
-                predictions.append(output)
+                mean, log_var = self(x, src_mask, src_key_padding_mask)
+                predictions.append(mean)
+                log_variances.append(log_var)
         
         predictions = torch.stack(predictions)
-        mean = predictions.mean(dim=0)
-        variance = predictions.var(dim=0)
+        mean_prediction = predictions.mean(dim=0)
+        epistemic_variance = predictions.var(dim=0)
+        aleatoric_variance = torch.exp(torch.stack(log_variances).mean(dim=0))
         
-        return mean, variance
+        total_variance = epistemic_variance + aleatoric_variance
+        
+        return mean_prediction, total_variance
+
+    def get_uncertainty_components(
+        self,
+        x: torch.Tensor,
+        num_samples: int = 100,
+        src_mask: Optional[torch.Tensor] = None,
+        src_key_padding_mask: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Get detailed uncertainty breakdown.
+        
+        Returns:
+            Tuple containing:
+            - mean predictions
+            - epistemic uncertainty
+            - aleatoric uncertainty
+            - total uncertainty
+        """
+        self.train()
+        
+        predictions = []
+        log_variances = []
+        
+        with torch.no_grad():
+            for _ in range(num_samples):
+                mean, log_var = self(x, src_mask, src_key_padding_mask)
+                predictions.append(mean)
+                log_variances.append(log_var)
+        
+        predictions = torch.stack(predictions)
+        mean_prediction = predictions.mean(dim=0)
+        epistemic_variance = predictions.var(dim=0)
+        aleatoric_variance = torch.exp(torch.stack(log_variances).mean(dim=0))
+        total_variance = epistemic_variance + aleatoric_variance
+        
+        return mean_prediction, epistemic_variance, aleatoric_variance, total_variance
