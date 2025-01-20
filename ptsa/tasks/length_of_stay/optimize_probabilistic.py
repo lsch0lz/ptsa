@@ -61,6 +61,9 @@ def get_random_slice(data_length, batch_size, target_fraction=0.5):
     
     return start_idx, end_idx
 
+def nll_loss(mean, log_var, y):
+    variance = torch.exp(log_var)
+    return 0.5 * torch.mean((y - mean) ** 2 / variance + log_var)
 
 def objective(trial):
     wandb.finish()
@@ -123,7 +126,7 @@ def objective(trial):
 
         print(f"Model device: {next(model.parameters()).device}")
 
-        criterion = nn.MSELoss()
+        criterion = nll_loss
         optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"])
 
         # data loading
@@ -232,11 +235,16 @@ def objective(trial):
                 x = torch.FloatTensor(x).to(device)
                 y = torch.FloatTensor(y).to(device)
                 
-                outputs = model(x)
-                loss = criterion(outputs, y)
+                mean, log_var = model(x)
+
+                loss = criterion(mean, log_var, y)
                 
                 optimizer.zero_grad()
                 loss.backward()
+                
+                if args.model == "transformer":
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
                 optimizer.step()
                 
                 total_loss += loss.item()
@@ -253,8 +261,10 @@ def objective(trial):
                     x = torch.FloatTensor(x).to(device)
                     y = torch.FloatTensor(y).to(device)
                     
-                    outputs = model(x)
-                    loss = criterion(outputs, y)
+                    mean, log_var = model(x)
+
+                    loss = criterion(mean, log_var, y)
+                    
                     val_loss += loss.item()
                 
                 avg_val_loss = val_loss / val_data_gen.steps
