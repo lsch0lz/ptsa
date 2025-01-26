@@ -89,11 +89,18 @@ def objective(trial):
         }
 
         if args.model == "transformer":
+            d_model = trial.suggest_int("d_model", 32, 256, step=32)
+    
+            valid_heads = [h for h in range(2, 9) if d_model % h == 0]
+            if not valid_heads:
+                d_model = ((d_model + 7) // 8) * 8
+                valid_heads = [h for h in range(2, 9) if d_model % h == 0]
+            
             config = {
                 "input_size": 76,
-                "d_model": trial.suggest_int("d_model", 32, 256, step=32),
+                "d_model": d_model,
                 "num_layers": trial.suggest_int('num_layers', 1, 4),
-                "nhead": trial.suggest_int("nhead", 2, 8),
+                "nhead": trial.suggest_categorical("nhead", valid_heads),
                 "dim_feedforward": trial.suggest_int("dim_feedforward", 64, 512, step=64),
                 "learning_rate": trial.suggest_float("learning_rate", 1e-5, 1e-3, log=True),
                 "dropout": trial.suggest_float("dropout", 0.2, 0.8),
@@ -102,11 +109,10 @@ def objective(trial):
                 "num_epochs": trial.suggest_int('num_epochs', 5, 15),
             }
 
-            config["nhead"] = min(config["nhead"], config["d_model"] // 16)
 
         wandb.config.update(config)
         
-        device = "cuda:1" if torch.cuda.is_available() else "cpu" 
+        device = "cuda:0" if torch.cuda.is_available() else "cpu" 
 
         model = nn.Module()
         if args.model == "lstm":
