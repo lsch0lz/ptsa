@@ -61,6 +61,9 @@ def get_random_slice(data_length, batch_size, target_fraction=0.5):
     
     return start_idx, end_idx
 
+def nll_loss(mean, log_var, y):
+    variance = torch.exp(log_var)
+    return 0.5 * torch.mean((y - mean) ** 2 / variance + log_var)
 
 def objective(trial):
     wandb.finish()
@@ -68,8 +71,8 @@ def objective(trial):
     # Initialize wandb run for this trial
     wandb.init(
         project=f"probabilistic_{args.model}_los", 
-        group=f"{args.model}_optuna_test_small_dataset",
-        name=f"{args.model}_optuna_test_small_dataset_trial_{trial.number}",
+        group=f"{args.model}_fixed_mc_dropout_optuna_test_small_dataset",
+        name=f"{args.model}_fixed_optuna_dropout_optuna_test_small_dataset_trial_{trial.number}",
         reinit=True
     )
     try:
@@ -86,11 +89,25 @@ def objective(trial):
         }
 
         if args.model == "transformer":
+            configurations = [
+                {"d_model": 64, "nhead": 2},
+                {"d_model": 64, "nhead": 4},
+                {"d_model": 128, "nhead": 2},
+                {"d_model": 128, "nhead": 4},
+                {"d_model": 128, "nhead": 8},
+                {"d_model": 256, "nhead": 4},
+                {"d_model": 256, "nhead": 8}
+            ]
+            
+            # Select one configuration
+            config_idx = trial.suggest_categorical("model_config", list(range(len(configurations))))
+            selected_config = configurations[config_idx]
+            
             config = {
                 "input_size": 76,
-                "d_model": trial.suggest_int("d_model", 32, 256, step=32),
+                "d_model": selected_config["d_model"],
+                "nhead": selected_config["nhead"],
                 "num_layers": trial.suggest_int('num_layers', 1, 4),
-                "nhead": trial.suggest_int("nhead", 2, 8),
                 "dim_feedforward": trial.suggest_int("dim_feedforward", 64, 512, step=64),
                 "learning_rate": trial.suggest_float("learning_rate", 1e-5, 1e-3, log=True),
                 "dropout": trial.suggest_float("dropout", 0.2, 0.8),
@@ -99,11 +116,9 @@ def objective(trial):
                 "num_epochs": trial.suggest_int('num_epochs', 5, 15),
             }
 
-            config["nhead"] = min(config["nhead"], config["d_model"] // 16)
-
         wandb.config.update(config)
         
-        device = "cuda:2" if torch.cuda.is_available() else "cpu" 
+        device = "cuda:0" if torch.cuda.is_available() else "cpu" 
 
         model = nn.Module()
         if args.model == "lstm":
@@ -123,7 +138,7 @@ def objective(trial):
 
         print(f"Model device: {next(model.parameters()).device}")
 
-        criterion = nn.MSELoss()
+        criterion = nll_loss
         optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"])
 
         # data loading
@@ -232,11 +247,16 @@ def objective(trial):
                 x = torch.FloatTensor(x).to(device)
                 y = torch.FloatTensor(y).to(device)
                 
-                outputs = model(x)
-                loss = criterion(outputs, y)
+                mean, log_var = model(x)
+
+                loss = criterion(mean, log_var, y)
                 
                 optimizer.zero_grad()
                 loss.backward()
+                
+                if args.model == "transformer":
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
                 optimizer.step()
                 
                 total_loss += loss.item()
@@ -253,8 +273,10 @@ def objective(trial):
                     x = torch.FloatTensor(x).to(device)
                     y = torch.FloatTensor(y).to(device)
                     
-                    outputs = model(x)
-                    loss = criterion(outputs, y)
+                    mean, log_var = model(x)
+
+                    loss = criterion(mean, log_var, y)
+                    
                     val_loss += loss.item()
                 
                 avg_val_loss = val_loss / val_data_gen.steps

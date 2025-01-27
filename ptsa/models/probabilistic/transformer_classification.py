@@ -20,7 +20,7 @@ class PositionalEncoding(nn.Module):
         x = x + self.pe[:, :x.size(1)]
         return F.dropout(x, p=self.dropout_rate, training=self.training)
 
-class TransformerLOS(nn.Module):
+class TransformerIHM(nn.Module):
     def __init__(
         self, 
         input_size: int,
@@ -31,7 +31,7 @@ class TransformerLOS(nn.Module):
         dropout: float = 0.1,
         activation: str = "gelu"
     ):
-        super(TransformerLOS, self).__init__()
+        super(TransformerIHM, self).__init__()
         
         self.dropout_rate = dropout
         
@@ -42,7 +42,6 @@ class TransformerLOS(nn.Module):
         
         self.pos_encoder = PositionalEncoding(d_model, dropout=dropout)
         
-        # Custom encoder layer for MC dropout
         encoder_layer = self._create_encoder_layer(
             d_model=d_model,
             nhead=nhead,
@@ -56,15 +55,13 @@ class TransformerLOS(nn.Module):
             num_layers=num_layers
         )
         
-        # Shared feature processing
         self.final_norm = nn.LayerNorm(d_model)
         
-        # Separate heads for mean and log variance
-        self.fc_mean = nn.Linear(d_model, 1)
+        # Two output heads: one for logits and one for aleatoric uncertainty
+        self.fc_logits = nn.Linear(d_model, 1)
         self.fc_log_var = nn.Linear(d_model, 1)
         
-        # Initialize output layers with smaller weights
-        torch.nn.init.xavier_uniform_(self.fc_mean.weight, gain=0.1)
+        torch.nn.init.xavier_uniform_(self.fc_logits.weight, gain=0.1)
         torch.nn.init.xavier_uniform_(self.fc_log_var.weight, gain=0.1)
         
         self.d_model = d_model
@@ -115,12 +112,56 @@ class TransformerLOS(nn.Module):
         x = self.final_norm(x)
         x = self._apply_dropout(x)
         
-        # Generate mean and log variance predictions
-        mean = self.fc_mean(x).squeeze(-1)
-        log_var = self.fc_log_var(x).squeeze(-1)
+        # Generate logits and uncertainty
+        logits = self.fc_logits(x).squeeze(-1)
+        uncertainty = self.fc_log_var(x).squeeze(-1)
         
-        return mean, log_var
+        return logits, uncertainty
     
+    def get_uncertainty_components(
+        self,
+        x: torch.Tensor,
+        num_samples: int = 100,
+        src_mask: Optional[torch.Tensor] = None,
+        src_key_padding_mask: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Get detailed uncertainty breakdown for binary classification.
+        
+        Returns:
+            Tuple containing:
+            - mean probabilities (0-1)
+            - epistemic uncertainty (variance in predictions from MC dropout)
+            - aleatoric uncertainty (model's direct uncertainty prediction)
+            - total uncertainty (combined epistemic and aleatoric)
+        """
+        self.train()  # Enable dropout
+        
+        logits_samples = []
+        uncertainty_samples = []
+        
+        with torch.no_grad():
+            for _ in range(num_samples):
+                logits, uncertainty = self(x, src_mask, src_key_padding_mask)
+                probs = torch.sigmoid(logits)
+                logits_samples.append(probs)
+                uncertainty_samples.append(torch.sigmoid(uncertainty))  # Transform to 0-1 scale
+        
+        # Calculate probabilities and uncertainties
+        probs_samples = torch.stack(logits_samples)
+        mean_probs = probs_samples.mean(dim=0)
+        
+        # Epistemic uncertainty from variance in predictions
+        epistemic_uncertainty = probs_samples.var(dim=0)
+        
+        # Aleatoric uncertainty from model's direct prediction
+        aleatoric_uncertainty = torch.stack(uncertainty_samples).mean(dim=0)
+        
+        # Total uncertainty is the sum of both types
+        total_uncertainty = epistemic_uncertainty + aleatoric_uncertainty
+        
+        return mean_probs, epistemic_uncertainty, aleatoric_uncertainty, total_uncertainty
+
     def predict_with_uncertainty(
         self, 
         x: torch.Tensor,
@@ -129,11 +170,10 @@ class TransformerLOS(nn.Module):
         src_key_padding_mask: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Perform Monte Carlo Dropout inference to estimate both epistemic and aleatoric uncertainty.
+        Simplified prediction with total uncertainty.
         
         Returns:
-            Tuple[Tensor, Tensor]: (mean predictions, total variance)
-                - total variance = epistemic uncertainty + aleatoric uncertainty
+            Tuple[Tensor, Tensor]: (mean probabilities, total uncertainty)
         """
         self.train()  # Enable dropout
         
@@ -155,38 +195,3 @@ class TransformerLOS(nn.Module):
         
         return mean_prediction, total_variance
 
-    def get_uncertainty_components(
-        self,
-        x: torch.Tensor,
-        num_samples: int = 100,
-        src_mask: Optional[torch.Tensor] = None,
-        src_key_padding_mask: Optional[torch.Tensor] = None
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        Get detailed uncertainty breakdown.
-        
-        Returns:
-            Tuple containing:
-            - mean predictions
-            - epistemic uncertainty
-            - aleatoric uncertainty
-            - total uncertainty
-        """
-        self.train()
-        
-        predictions = []
-        log_variances = []
-        
-        with torch.no_grad():
-            for _ in range(num_samples):
-                mean, log_var = self(x, src_mask, src_key_padding_mask)
-                predictions.append(mean)
-                log_variances.append(log_var)
-        
-        predictions = torch.stack(predictions)
-        mean_prediction = predictions.mean(dim=0)
-        epistemic_variance = predictions.var(dim=0)
-        aleatoric_variance = torch.exp(torch.stack(log_variances).mean(dim=0))
-        total_variance = epistemic_variance + aleatoric_variance
-        
-        return mean_prediction, epistemic_variance, aleatoric_variance, total_variance
