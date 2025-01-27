@@ -33,7 +33,8 @@ class IHMModelInference:
                     data_path: str, 
                     model_path: str, 
                     model_name: str, 
-                    device: str
+                    device: str,
+                    probabilistic: bool
                  ) -> None:
             self.logger = logging.getLogger(__name__)
             self.device = device
@@ -41,19 +42,39 @@ class IHMModelInference:
             self.data_path = data_path
             self.model_path = model_path
             self.model_name = model_name
+            self.probabilistic = probabilistic
 
-    def _load_model(self):
-            if self.model_name == "LSTM":
-                model = LSTM(self.config["input_size"], self.config["hidden_size"], self.config["num_layers"], self.config["dropout"]).to(self.device)
-            elif self.model_name == "RNN":
-                model = RNN(self.config["input_size"], self.config["hidden_size"], self.config["num_layers"], self.config["dropout"]).to(self.device)
-            elif self.model_name == "GRU":
-                model = GRU(self.config["input_size"], self.config["hidden_size"], self.config["num_layers"], self.config["dropout"]).to(self.device)
+    def _load_deterministic_model(self):
+        from ptsa.models.deterministic.lstm_classification import LSTM 
+        from ptsa.models.deterministic.rnn_classification import RNN
+        from ptsa.models.deterministic.gru_classification import GRU
+            
+        if self.model_name == "LSTM":
+            model = LSTM(self.config["input_size"], self.config["hidden_size"], self.config["num_layers"], self.config["dropout"]).to(self.device)
+        elif self.model_name == "RNN":
+            model = RNN(self.config["input_size"], self.config["hidden_size"], self.config["num_layers"], self.config["dropout"]).to(self.device)
+        elif self.model_name == "GRU":
+            model = GRU(self.config["input_size"], self.config["hidden_size"], self.config["num_layers"], self.config["dropout"]).to(self.device)
 
-            model.load_state_dict(torch.load(self.model_path, weights_only=True))
+        model.load_state_dict(torch.load(self.model_path, weights_only=True))
 
-            return model
+        return model
 
+    def _load_probabilistic_model(self):
+        from ptsa.models.probabilistic.lstm_classification import LSTM 
+        from ptsa.models.probabilistic.rnn_classification import RNN
+        from ptsa.models.probabilistic.gru_classification import GRU
+            
+        if self.model_name == "LSTM":
+            model = LSTM(self.config["input_size"], self.config["hidden_size"], self.config["num_layers"], self.config["dropout"]).to(self.device)
+        elif self.model_name == "RNN":
+            model = RNN(self.config["input_size"], self.config["hidden_size"], self.config["num_layers"], self.config["dropout"]).to(self.device)
+        elif self.model_name == "GRU":
+            model = GRU(self.config["input_size"], self.config["hidden_size"], self.config["num_layers"], self.config["dropout"]).to(self.device)
+
+        model.load_state_dict(torch.load(self.model_path, weights_only=True))
+
+        return model
 
 
     def _even_out_number_of_data_points(self, data):
@@ -129,11 +150,15 @@ class IHMModelInference:
         return train_raw, val_raw, test_raw
 
     def infer_on_data_points(self, test_data):
-        model = self._load_model()
+        if self.probabilistic:
+            model = self._load_probabilistic_model()
+        else:
+            model = self._load_deterministic_model()
 
         model.eval()
         all_predictions = []
         all_targets = []
+        all_uncertainties = []
 
         with torch.no_grad():
             for i in range(len(test_data[0])):
@@ -144,10 +169,17 @@ class IHMModelInference:
                 if x.dim() == 2:
                     x = x.unsqueeze(0)
                 
-                outputs = model(x).view(-1)
+                if self.probabilistic:
+                    mean, variance = model.predict_with_uncertainty(x, num_samples=self.config["num_mc_samples"])
+                
+                    all_predictions.append(mean.cpu().numpy())
+                    all_uncertainties.append(variance.cpu().numpy())
+                    all_targets.append(y.cpu().numpy())
 
-                all_predictions.append(outputs.cpu().numpy())
-                all_targets.append(y.cpu().numpy())
+                else:
+                    outputs = model(x).view(-1)
+                    all_predictions.append(outputs.cpu().numpy())
+                    all_targets.append(y.cpu().numpy())
 
 
-        return all_predictions, all_targets 
+        return all_predictions, all_targets, all_uncertainties 
