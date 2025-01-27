@@ -89,18 +89,25 @@ def objective(trial):
         }
 
         if args.model == "transformer":
-            d_model = trial.suggest_int("d_model", 32, 256, step=32)
-    
-            valid_heads = [h for h in range(2, 9) if d_model % h == 0]
-            if not valid_heads:
-                d_model = ((d_model + 7) // 8) * 8
-                valid_heads = [h for h in range(2, 9) if d_model % h == 0]
+            configurations = [
+                {"d_model": 64, "nhead": 2},
+                {"d_model": 64, "nhead": 4},
+                {"d_model": 128, "nhead": 2},
+                {"d_model": 128, "nhead": 4},
+                {"d_model": 128, "nhead": 8},
+                {"d_model": 256, "nhead": 4},
+                {"d_model": 256, "nhead": 8}
+            ]
+            
+            # Select one configuration
+            config_idx = trial.suggest_categorical("model_config", list(range(len(configurations))))
+            selected_config = configurations[config_idx]
             
             config = {
                 "input_size": 76,
-                "d_model": d_model,
+                "d_model": selected_config["d_model"],
+                "nhead": selected_config["nhead"],
                 "num_layers": trial.suggest_int('num_layers', 1, 4),
-                "nhead": trial.suggest_categorical("nhead", valid_heads),
                 "dim_feedforward": trial.suggest_int("dim_feedforward", 64, 512, step=64),
                 "learning_rate": trial.suggest_float("learning_rate", 1e-5, 1e-3, log=True),
                 "dropout": trial.suggest_float("dropout", 0.2, 0.8),
@@ -108,7 +115,6 @@ def objective(trial):
                 "num_mc_samples": 100,
                 "num_epochs": trial.suggest_int('num_epochs', 5, 15),
             }
-
 
         wandb.config.update(config)
         
