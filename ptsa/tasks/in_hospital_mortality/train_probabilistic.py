@@ -5,6 +5,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 import torch
 from torch import nn
+import torch.nn.functional as F
 
 import wandb
 import optuna
@@ -21,6 +22,7 @@ from ptsa.utils import utils
 from ptsa.models.probabilistic.lstm_classification import LSTM 
 from ptsa.models.probabilistic.rnn_classification import RNN
 from ptsa.models.probabilistic.gru_classification import GRU
+from ptsa.models.probabilistic.transformer_classification import TransformerIHM 
 
 logger = logging.getLogger(__name__)
 
@@ -124,15 +126,32 @@ def log_detailed_metrics(targets, predictions):
 
     return f1
 
+def binary_classification_uncertainty_loss(pred_proba, pred_log_var, targets, pos_weight):
+            """
+            Custom loss function that incorporates aleatoric uncertainty
+            for binary classification with class weighting
+            """
+            variance = torch.exp(pred_log_var)
+            
+            bce_loss = F.binary_cross_entropy(pred_proba, targets, 
+                                            weight=pos_weight.expand_as(targets),
+                                            reduction='none')
+            
+            uncertainty_reg = 0.5 * pred_log_var  # Uncertainty regularization
+            
+            total_loss = (bce_loss / variance) + uncertainty_reg
+            
+            return total_loss.mean()
+
 
 def objective(trial):
     wandb.finish()
 
     # Initialize wandb run for this trial
     wandb.init(
-        project="ihm_RNN_Probabilitic_optuna", 
-        group=f"RNN_Probabilistic_with_model_a79c1f4cb6c3fde8d4bb007ee8679d44b299becd",
-        name=f"RNN_Probabilistic_with_model_a79c1f4cb6c3fde8d4bb007ee8679d44b299becd_trial_{trial.number}",
+        project=f"ihm_{args.model}_Probabilitic_optuna", 
+        group=f"{args.model}_fixed_mc_dropout",
+        name=f"{args.model}_fixed_mc_dropout_trial_{trial.number}",
         reinit=True
     )
     try:
@@ -149,10 +168,33 @@ def objective(trial):
             "num_mc_samples": 100
         }
         
+        if args.model == "transformer":
+            d_model = trial.suggest_int("d_model", 32, 256, step=32)
+    
+            valid_heads = [h for h in range(2, 9) if d_model % h == 0]
+            if not valid_heads:
+                d_model = ((d_model + 7) // 8) * 8
+                valid_heads = [h for h in range(2, 9) if d_model % h == 0]
+            
+            config = {
+                "input_size": 76,
+                "d_model": d_model,
+                "num_layers": trial.suggest_int('num_layers', 1, 4),
+                "nhead": trial.suggest_categorical("nhead", valid_heads),
+                "dim_feedforward": trial.suggest_int("dim_feedforward", 64, 512, step=64),
+                "learning_rate": trial.suggest_float("learning_rate", 1e-5, 1e-3, log=True),
+                "dropout": trial.suggest_float("dropout", 0.2, 0.8),
+                "batch_size": trial.suggest_categorical('batch_size', [32, 64, 128]),
+                "num_mc_samples": 100,
+                "num_epochs": trial.suggest_int('num_epochs', 5, 15),
+                "weight_decay": trial.suggest_loguniform("weight_decay", 1e-6, 1e-2),
+            }
+
+
         wandb.config.update(config)
         
         # Device configuration
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        device = "cuda:3" if torch.cuda.is_available() else "cpu"
 
         # Data loading and preprocessing
         all_reader = InHospitalMortalityReader(
@@ -212,6 +254,14 @@ def objective(trial):
             model = RNN(config["input_size"], config["hidden_size"], config["num_layers"], config["dropout"]).to(device)
         elif args.model == "gru":
             model = GRU(config["input_size"], config["hidden_size"], config["num_layers"], config["dropout"]).to(device)
+        elif args.model == "transformer":
+            model = TransformerIHM(input_size=config["input_size"],
+                                d_model=config["d_model"],
+                                nhead=config["nhead"],
+                                num_layers=config["num_layers"],
+                                dropout=config["dropout"],
+                                dim_feedforward=config["dim_feedforward"]).to(device)
+
 
         # Loss and Optimizer
         pos_weight_tensor = torch.tensor([pos_weight], device=device)
@@ -232,9 +282,21 @@ def objective(trial):
                     x = x.unsqueeze(0)
                 
                 optimizer.zero_grad()
-                outputs = model(x).view(-1)
-                loss = criterion(outputs, y)
+
+                mean, log_var = model(x)
+
+                loss = binary_classification_uncertainty_loss(
+                    mean,
+                    log_var, 
+                    y,
+                    pos_weight_tensor
+                )
+
                 loss.backward()
+
+                if args.model == "transformer":
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
                 optimizer.step()
 
                 train_loss += loss.item()
@@ -255,13 +317,19 @@ def objective(trial):
                 if x.dim() == 2:
                     x = x.unsqueeze(0)
                 
-                outputs = model(x)
+                mean, log_var = model(x)
+                
+                loss = binary_classification_uncertainty_loss(
+                    mean,
+                    log_var, 
+                    y,
+                    pos_weight_tensor
+                )
 
-                outputs = outputs.view(-1)
-                loss = criterion(outputs, y)
+                
                 val_loss += loss.item()
 
-                predictions_val.append(outputs.detach().cpu().numpy())
+                predictions_val.append(mean.detach().cpu().numpy())
                 targets_val.append(y.cpu().numpy())
 
             val_loss /= len(val_raw[0])
