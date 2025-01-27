@@ -27,7 +27,7 @@ from ptsa.models.probabilistic.gru import GRU
 
 logging.basicConfig(level=logging.INFO)
 
-class IHMProbabilisticInference:
+class LOSProbabilisticInference:
     def __init__(self, config: Dict, 
                  data_path: str, 
                  model_path: str, 
