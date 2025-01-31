@@ -125,12 +125,7 @@ def log_detailed_metrics(targets, predictions):
     plt.close()
 
     return f1
-
-def binary_classification_uncertainty_loss(pred_proba, pred_log_var, targets, pos_weight):
-            """
-            Custom loss function that incorporates aleatoric uncertainty
-            for binary classification with class weighting
-            """
+"""def binary_classification_uncertainty_loss(pred_proba, pred_log_var, targets, pos_weight):
             variance = torch.exp(pred_log_var)
             
             bce_loss = F.binary_cross_entropy(pred_proba, targets, 
@@ -142,8 +137,48 @@ def binary_classification_uncertainty_loss(pred_proba, pred_log_var, targets, po
             total_loss = (bce_loss / variance) + uncertainty_reg
             
             return total_loss.mean()
+"""
 
-
+def binary_classification_uncertainty_loss(pred_proba, pred_log_var, targets, pos_weight):
+    """
+    Custom loss function that incorporates aleatoric uncertainty
+    for binary classification with class weighting
+    """
+    # Ensure tensors are on the same device and have correct shape
+    if len(pred_proba.shape) > 1:
+        pred_proba = pred_proba.squeeze()
+    if len(pred_log_var.shape) > 1:
+        pred_log_var = pred_log_var.squeeze()
+    if len(targets.shape) > 1:
+        targets = targets.squeeze()
+    
+    # Convert to float and ensure proper range
+    pred_proba = pred_proba.float()
+    pred_log_var = pred_log_var.float()
+    targets = targets.float()
+    
+    # Clamp probabilities for numerical stability
+    pred_proba = torch.clamp(pred_proba, min=1e-6, max=1-1e-6)
+    
+    # Calculate variance (with safety clamp)
+    variance = torch.clamp(torch.exp(pred_log_var), min=1e-6)
+    
+    # Calculate weighted BCE loss
+    bce_loss = F.binary_cross_entropy(
+        pred_proba, 
+        targets,
+        reduction='none'
+    )
+    
+    if pos_weight is not None:
+        # Apply class weights
+        weights = torch.where(targets == 1, pos_weight, torch.ones_like(pos_weight))
+        bce_loss = bce_loss * weights
+    
+    # Scale loss by uncertainty
+    uncertainty_loss = (bce_loss / variance) + 0.5 * torch.log(variance)
+    
+    return uncertainty_loss.mean()
 def objective(trial):
     wandb.finish()
 
@@ -163,7 +198,7 @@ def objective(trial):
             "learning_rate": trial.suggest_loguniform('learning_rate', 1e-5, 1e-2),
             "dropout": trial.suggest_float("dropout", 0.2, 0.8),
             "batch_size": trial.suggest_categorical('batch_size', [32, 64, 128]),
-            "num_epochs": trial.suggest_int('num_epochs', 10, 40),
+            "num_epochs": trial.suggest_int('num_epochs', 5, 15),
             "weight_decay": trial.suggest_loguniform("weight_decay", 1e-6, 1e-2),
             "num_mc_samples": 100
         }
@@ -189,11 +224,11 @@ def objective(trial):
                 "nhead": selected_config["nhead"],
                 "num_layers": trial.suggest_int('num_layers', 1, 4),
                 "dim_feedforward": trial.suggest_int("dim_feedforward", 64, 512, step=64),
-                "learning_rate": trial.suggest_float("learning_rate", 1e-5, 1e-3, log=True),
+                "learning_rate": trial.suggest_float("learning_rate", 1e-4, 1e-3, log=True),
                 "dropout": trial.suggest_float("dropout", 0.2, 0.8),
                 "batch_size": trial.suggest_categorical('batch_size', [32, 64, 128]),
                 "num_mc_samples": 100,
-                "weight_decay": trial.suggest_loguniform("weight_decay", 1e-6, 1e-2),
+                "weight_decay": trial.suggest_loguniform("weight_decay", 1e-4, 1e-2),
                 "num_epochs": trial.suggest_int('num_epochs', 5, 15),
             }
 
@@ -298,6 +333,12 @@ def objective(trial):
                     pos_weight_tensor
                 )
 
+                if torch.isnan(loss) or torch.isinf(loss):
+                    print(f"Warning: Invalid loss value: {loss}")
+                    print(f"Probabilities range: [{mean.min()}, {mean.max()}]")
+                    print(f"Log variance range: [{log_var.min()}, {log_var.max()}]")
+                    continue
+                
                 loss.backward()
 
                 if args.model == "transformer":
@@ -417,6 +458,14 @@ def objective(trial):
 
         return f1_score_testing
     
+    except RuntimeError as e:
+        print(f"Error in training step:")
+        print(f"Input shape: {x.shape}")
+        print(f"Target shape: {y.shape}")
+        print(f"Mean output shape: {mean.shape if 'mean' in locals() else 'Not computed'}")
+        print(f"Log var shape: {log_var.shape if 'log_var' in locals() else 'Not computed'}")
+        raise e
+
     finally:
         wandb.finish()
 
