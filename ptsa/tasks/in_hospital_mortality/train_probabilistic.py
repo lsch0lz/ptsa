@@ -138,11 +138,9 @@ def log_detailed_metrics(targets, predictions):
             
             return total_loss.mean()
 """
-
 def binary_classification_uncertainty_loss(pred_proba, pred_log_var, targets, pos_weight):
     """
-    Custom loss function that incorporates aleatoric uncertainty
-    for binary classification with class weighting
+    Stabilized loss function for binary classification with uncertainty
     """
     # Ensure tensors are on the same device and have correct shape
     if len(pred_proba.shape) > 1:
@@ -152,18 +150,13 @@ def binary_classification_uncertainty_loss(pred_proba, pred_log_var, targets, po
     if len(targets.shape) > 1:
         targets = targets.squeeze()
     
-    # Convert to float and ensure proper range
-    pred_proba = pred_proba.float()
-    pred_log_var = pred_log_var.float()
-    targets = targets.float()
-    
-    # Clamp probabilities for numerical stability
+    # Clamp probabilities and variance for numerical stability
     pred_proba = torch.clamp(pred_proba, min=1e-6, max=1-1e-6)
+    pred_log_var = torch.clamp(pred_log_var, min=-10, max=10)  # Prevent extreme variances
+    variance = torch.exp(pred_log_var)
+    variance = torch.clamp(variance, min=1e-6, max=100)  # Reasonable variance range
     
-    # Calculate variance (with safety clamp)
-    variance = torch.clamp(torch.exp(pred_log_var), min=1e-6)
-    
-    # Calculate weighted BCE loss
+    # Calculate BCE loss with stability improvements
     bce_loss = F.binary_cross_entropy(
         pred_proba, 
         targets,
@@ -171,14 +164,19 @@ def binary_classification_uncertainty_loss(pred_proba, pred_log_var, targets, po
     )
     
     if pos_weight is not None:
-        # Apply class weights
+        # Apply class weights with gradient scaling
         weights = torch.where(targets == 1, pos_weight, torch.ones_like(pos_weight))
+        weights = weights / weights.mean()  # Normalize weights
         bce_loss = bce_loss * weights
     
-    # Scale loss by uncertainty
+    # Calculate uncertainty loss with gradient scaling
     uncertainty_loss = (bce_loss / variance) + 0.5 * torch.log(variance)
     
+    # Apply gradient clipping at the loss level
+    uncertainty_loss = torch.clamp(uncertainty_loss, max=100)
+    
     return uncertainty_loss.mean()
+
 def objective(trial):
     wandb.finish()
 
@@ -308,6 +306,21 @@ def objective(trial):
         pos_weight_tensor = torch.tensor([pos_weight], device=device)
         criterion = nn.BCELoss(weight=pos_weight_tensor)
         optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"])
+        if args.model == "transformer":
+            optimizer = torch.optim.AdamW(  # Switch to AdamW
+                                        model.parameters(),
+                                        lr=config["learning_rate"],
+                                        weight_decay=config["weight_decay"],
+                                        eps=1e-8  # Increase epsilon for better stability
+                                        )
+
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                                                                optimizer,
+                                                                mode='min',
+                                                                factor=0.5,
+                                                                patience=3,
+                                                                min_lr=1e-6
+                                                                )
 
         # Training loop
         for epoch in range(config["num_epochs"]):
@@ -325,6 +338,10 @@ def objective(trial):
                 optimizer.zero_grad()
 
                 mean, log_var = model(x)
+                    
+                if torch.any(torch.isnan(mean)) or torch.any(torch.isnan(log_var)):
+                    print(f"Warning: NaN detected in model outputs")
+                    continue
 
                 loss = binary_classification_uncertainty_loss(
                     mean,
@@ -380,6 +397,9 @@ def objective(trial):
                 targets_val.append(y.cpu().numpy())
 
             val_loss /= len(val_raw[0])
+
+            scheduler.step(val_loss)
+
             predictions = [pred[0] for pred in predictions_val]
             targets = [target[0] for target in targets_val]
             
