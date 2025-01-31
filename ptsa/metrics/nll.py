@@ -1,7 +1,16 @@
 
 import numpy as np
+import torch
+import torch.nn.functional as F
 
 from ptsa.tasks.in_hospital_mortality.inference_deterministic import IHMModelInference
+
+def binary_classification_nll(y_true, predictions):
+    """Compute the Negative Log-Likelihood for binary classification."""
+    predictions = np.clip(predictions, 1e-10, 1 - 1e-10)
+    
+    nll = - (y_true * np.log(predictions) + (1 - y_true) * np.log(1 - predictions))
+    return np.mean(nll)
 
 
 if __name__ == "__main__":
@@ -36,3 +45,7 @@ if __name__ == "__main__":
     predictions = np.array(predictions).flatten()
     all_uncertainties = np.array(all_uncertainties).flatten()
     y_true = np.array(y_true).flatten()
+
+    nll = binary_classification_nll(y_true, predictions)
+
+    print(f"NLL: {nll}")
