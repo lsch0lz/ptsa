@@ -150,8 +150,8 @@ def objective(trial):
     # Initialize wandb run for this trial
     wandb.init(
         project=f"ihm_{args.model}_Probabilitic_optuna", 
-        group=f"{args.model}_fixed_mc_dropout",
-        name=f"{args.model}_fixed_mc_dropout_trial_{trial.number}",
+        group=f"{args.model}_classification",
+        name=f"{args.model}_classification_trial_{trial.number}",
         reinit=True
     )
     try:
@@ -169,27 +169,33 @@ def objective(trial):
         }
         
         if args.model == "transformer":
-            d_model = trial.suggest_int("d_model", 32, 256, step=32)
-    
-            valid_heads = [h for h in range(2, 9) if d_model % h == 0]
-            if not valid_heads:
-                d_model = ((d_model + 7) // 8) * 8
-                valid_heads = [h for h in range(2, 9) if d_model % h == 0]
+            configurations = [
+                {"d_model": 64, "nhead": 2},
+                {"d_model": 64, "nhead": 4},
+                {"d_model": 128, "nhead": 2},
+                {"d_model": 128, "nhead": 4},
+                {"d_model": 128, "nhead": 8},
+                {"d_model": 256, "nhead": 4},
+                {"d_model": 256, "nhead": 8}
+            ]
+            
+            # Select one configuration
+            config_idx = trial.suggest_categorical("model_config", list(range(len(configurations))))
+            selected_config = configurations[config_idx]
             
             config = {
                 "input_size": 76,
-                "d_model": d_model,
+                "d_model": selected_config["d_model"],
+                "nhead": selected_config["nhead"],
                 "num_layers": trial.suggest_int('num_layers', 1, 4),
-                "nhead": trial.suggest_categorical("nhead", valid_heads),
                 "dim_feedforward": trial.suggest_int("dim_feedforward", 64, 512, step=64),
                 "learning_rate": trial.suggest_float("learning_rate", 1e-5, 1e-3, log=True),
                 "dropout": trial.suggest_float("dropout", 0.2, 0.8),
                 "batch_size": trial.suggest_categorical('batch_size', [32, 64, 128]),
                 "num_mc_samples": 100,
-                "num_epochs": trial.suggest_int('num_epochs', 5, 15),
                 "weight_decay": trial.suggest_loguniform("weight_decay", 1e-6, 1e-2),
+                "num_epochs": trial.suggest_int('num_epochs', 5, 15),
             }
-
 
         wandb.config.update(config)
         

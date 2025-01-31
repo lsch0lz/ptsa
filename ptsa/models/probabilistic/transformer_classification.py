@@ -60,6 +60,7 @@ class TransformerIHM(nn.Module):
         # Two output heads: one for logits and one for aleatoric uncertainty
         self.fc_logits = nn.Linear(d_model, 1)
         self.fc_log_var = nn.Linear(d_model, 1)
+        self.sigmoid = nn.Sigmoid()
         
         torch.nn.init.xavier_uniform_(self.fc_logits.weight, gain=0.1)
         torch.nn.init.xavier_uniform_(self.fc_log_var.weight, gain=0.1)
@@ -113,10 +114,10 @@ class TransformerIHM(nn.Module):
         x = self._apply_dropout(x)
         
         # Generate logits and uncertainty
-        logits = self.fc_logits(x).squeeze(-1)
+        proba = self.sigmoid(self.fc_logits(x)).squeeze(-1)
         uncertainty = self.fc_log_var(x).squeeze(-1)
         
-        return logits, uncertainty
+        return proba, uncertainty
     
     def get_uncertainty_components(
         self,
@@ -137,31 +138,23 @@ class TransformerIHM(nn.Module):
         """
         self.train()  # Enable dropout
         
-        logits_samples = []
-        uncertainty_samples = []
+        predictions = []
+        log_variances = []
         
         with torch.no_grad():
             for _ in range(num_samples):
-                logits, uncertainty = self(x, src_mask, src_key_padding_mask)
-                probs = torch.sigmoid(logits)
-                logits_samples.append(probs)
-                uncertainty_samples.append(torch.sigmoid(uncertainty))  # Transform to 0-1 scale
+                mean, log_var = self(x, src_mask, src_key_padding_mask)
+                predictions.append(mean)
+                log_variances.append(log_variances)
         
-        # Calculate probabilities and uncertainties
-        probs_samples = torch.stack(logits_samples)
-        mean_probs = probs_samples.mean(dim=0)
+        predictions = torch.stack(predictions)
+        mean_prediction = predictions.mean(dim=0)
+        epistemic_variance = predictions.var(dim=0)
+        aleatoric_variance = torch.exp(torch.stack(log_variances).mean(dim=0))
+        total_variance = epistemic_variance + aleatoric_variance
         
-        # Epistemic uncertainty from variance in predictions
-        epistemic_uncertainty = probs_samples.var(dim=0)
-        
-        # Aleatoric uncertainty from model's direct prediction
-        aleatoric_uncertainty = torch.stack(uncertainty_samples).mean(dim=0)
-        
-        # Total uncertainty is the sum of both types
-        total_uncertainty = epistemic_uncertainty + aleatoric_uncertainty
-        
-        return mean_probs, epistemic_uncertainty, aleatoric_uncertainty, total_uncertainty
-
+        return mean_prediction, epistemic_variance, aleatoric_variance, total_variance
+    
     def predict_with_uncertainty(
         self, 
         x: torch.Tensor,
