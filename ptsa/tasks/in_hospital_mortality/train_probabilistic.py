@@ -125,7 +125,8 @@ def log_detailed_metrics(targets, predictions):
     plt.close()
 
     return f1
-"""def binary_classification_uncertainty_loss(pred_proba, pred_log_var, targets, pos_weight):
+
+def binary_classification_uncertainty_loss(pred_proba, pred_log_var, targets, pos_weight):
             variance = torch.exp(pred_log_var)
             
             bce_loss = F.binary_cross_entropy(pred_proba, targets, 
@@ -137,8 +138,9 @@ def log_detailed_metrics(targets, predictions):
             total_loss = (bce_loss / variance) + uncertainty_reg
             
             return total_loss.mean()
-"""
-def binary_classification_uncertainty_loss(pred_proba, pred_log_var, targets, pos_weight):
+
+
+def binary_classification_uncertainty_loss_transformer(pred_proba, pred_log_var, targets, pos_weight):
     """
     Stabilized loss function for binary classification with uncertainty
     """
@@ -196,7 +198,7 @@ def objective(trial):
             "learning_rate": trial.suggest_loguniform('learning_rate', 1e-5, 1e-2),
             "dropout": trial.suggest_float("dropout", 0.2, 0.8),
             "batch_size": trial.suggest_categorical('batch_size', [32, 64, 128]),
-            "num_epochs": trial.suggest_int('num_epochs', 5, 15),
+            "num_epochs": trial.suggest_int('num_epochs', 10, 40),
             "weight_decay": trial.suggest_loguniform("weight_decay", 1e-6, 1e-2),
             "num_mc_samples": 100
         }
@@ -339,23 +341,32 @@ def objective(trial):
 
                 mean, log_var = model(x)
                     
-                if torch.any(torch.isnan(mean)) or torch.any(torch.isnan(log_var)):
-                    print(f"Warning: NaN detected in model outputs")
-                    continue
+                if args.model == "transformer":
+                    if torch.any(torch.isnan(mean)) or torch.any(torch.isnan(log_var)):
+                        print(f"Warning: NaN detected in model outputs")
+                        continue
 
-                loss = binary_classification_uncertainty_loss(
-                    mean,
-                    log_var, 
-                    y,
-                    pos_weight_tensor
-                )
+                    loss = binary_classification_uncertainty_loss_transformer(
+                        mean,
+                        log_var, 
+                        y,
+                        pos_weight_tensor
+                    )
 
-                if torch.isnan(loss) or torch.isinf(loss):
-                    print(f"Warning: Invalid loss value: {loss}")
-                    print(f"Probabilities range: [{mean.min()}, {mean.max()}]")
-                    print(f"Log variance range: [{log_var.min()}, {log_var.max()}]")
-                    continue
+                    if torch.isnan(loss) or torch.isinf(loss):
+                        print(f"Warning: Invalid loss value: {loss}")
+                        print(f"Probabilities range: [{mean.min()}, {mean.max()}]")
+                        print(f"Log variance range: [{log_var.min()}, {log_var.max()}]")
+                        continue
                 
+                else:
+                    loss = binary_classification_uncertainty_loss(
+                        mean,
+                        log_var, 
+                        y,
+                        pos_weight_tensor
+                    )
+ 
                 loss.backward()
 
                 if args.model == "transformer":
@@ -383,7 +394,15 @@ def objective(trial):
                 
                 mean, log_var = model(x)
                 
-                loss = binary_classification_uncertainty_loss(
+                if args.model == "transformer":
+                    loss = binary_classification_uncertainty_loss_transformer(
+                        mean,
+                        log_var, 
+                        y,
+                        pos_weight_tensor
+                    )
+                else:
+                    loss = binary_classification_uncertainty_loss(
                     mean,
                     log_var, 
                     y,
@@ -398,7 +417,8 @@ def objective(trial):
 
             val_loss /= len(val_raw[0])
 
-            scheduler.step(val_loss)
+            if args.model == "transformer":
+                scheduler.step(val_loss)
 
             predictions = [pred[0] for pred in predictions_val]
             targets = [target[0] for target in targets_val]
