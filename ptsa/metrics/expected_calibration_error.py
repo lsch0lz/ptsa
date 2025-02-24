@@ -103,7 +103,7 @@ if __name__ == "__main__":
             bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
 
     plt.xlabel("Predicted Probability")
-    plt.ylabel("Actual Accuracy")
+    plt.ylabel("Actual Probability")
     plt.title("Calibration Curve")
 
     plt.legend(loc='lower right')

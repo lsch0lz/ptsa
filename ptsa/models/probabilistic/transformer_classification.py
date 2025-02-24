@@ -55,13 +55,15 @@ class TransformerIHM(nn.Module):
             num_layers=num_layers
         )
         
+        # Shared feature processing
         self.final_norm = nn.LayerNorm(d_model)
         
-        # Two output heads: one for logits and one for aleatoric uncertainty
-        self.fc_logits = nn.Linear(d_model, 1)
+        # Output layers for logits and log variance
+        self.fc_logit = nn.Linear(d_model, 1)
         self.fc_log_var = nn.Linear(d_model, 1)
         
-        torch.nn.init.xavier_uniform_(self.fc_logits.weight, gain=0.1)
+        # Initialize output layers
+        torch.nn.init.xavier_uniform_(self.fc_logit.weight, gain=0.1)
         torch.nn.init.xavier_uniform_(self.fc_log_var.weight, gain=0.1)
         
         self.d_model = d_model
@@ -112,55 +114,14 @@ class TransformerIHM(nn.Module):
         x = self.final_norm(x)
         x = self._apply_dropout(x)
         
-        # Generate logits and uncertainty
-        logits = self.fc_logits(x).squeeze(-1)
-        uncertainty = self.fc_log_var(x).squeeze(-1)
+        # Generate logits and log variance
+        logits = self.fc_logit(x).squeeze(-1)
+        log_var = self.fc_log_var(x).squeeze(-1)
         
-        return logits, uncertainty
-    
-    def get_uncertainty_components(
-        self,
-        x: torch.Tensor,
-        num_samples: int = 100,
-        src_mask: Optional[torch.Tensor] = None,
-        src_key_padding_mask: Optional[torch.Tensor] = None
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        Get detailed uncertainty breakdown for binary classification.
+        # Apply sigmoid and clamp probabilities
+        proba = torch.clamp(torch.sigmoid(logits), min=1e-6, max=1-1e-6)
         
-        Returns:
-            Tuple containing:
-            - mean probabilities (0-1)
-            - epistemic uncertainty (variance in predictions from MC dropout)
-            - aleatoric uncertainty (model's direct uncertainty prediction)
-            - total uncertainty (combined epistemic and aleatoric)
-        """
-        self.train()  # Enable dropout
-        
-        logits_samples = []
-        uncertainty_samples = []
-        
-        with torch.no_grad():
-            for _ in range(num_samples):
-                logits, uncertainty = self(x, src_mask, src_key_padding_mask)
-                probs = torch.sigmoid(logits)
-                logits_samples.append(probs)
-                uncertainty_samples.append(torch.sigmoid(uncertainty))  # Transform to 0-1 scale
-        
-        # Calculate probabilities and uncertainties
-        probs_samples = torch.stack(logits_samples)
-        mean_probs = probs_samples.mean(dim=0)
-        
-        # Epistemic uncertainty from variance in predictions
-        epistemic_uncertainty = probs_samples.var(dim=0)
-        
-        # Aleatoric uncertainty from model's direct prediction
-        aleatoric_uncertainty = torch.stack(uncertainty_samples).mean(dim=0)
-        
-        # Total uncertainty is the sum of both types
-        total_uncertainty = epistemic_uncertainty + aleatoric_uncertainty
-        
-        return mean_probs, epistemic_uncertainty, aleatoric_uncertainty, total_uncertainty
+        return proba, log_var
 
     def predict_with_uncertainty(
         self, 
@@ -170,28 +131,32 @@ class TransformerIHM(nn.Module):
         src_key_padding_mask: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Simplified prediction with total uncertainty.
-        
-        Returns:
-            Tuple[Tensor, Tensor]: (mean probabilities, total uncertainty)
+        Perform Monte Carlo Dropout inference for binary classification with uncertainty.
         """
         self.train()  # Enable dropout
         
-        predictions = []
+        probas = []
         log_variances = []
         
         with torch.no_grad():
             for _ in range(num_samples):
-                mean, log_var = self(x, src_mask, src_key_padding_mask)
-                predictions.append(mean)
+                proba, log_var = self(x, src_mask, src_key_padding_mask)
+                probas.append(proba)
                 log_variances.append(log_var)
         
-        predictions = torch.stack(predictions)
-        mean_prediction = predictions.mean(dim=0)
-        epistemic_variance = predictions.var(dim=0)
-        aleatoric_variance = torch.exp(torch.stack(log_variances).mean(dim=0))
+        probas = torch.stack(probas)
+        mean_proba = probas.mean(dim=0)
         
-        total_variance = epistemic_variance + aleatoric_variance
+        # Ensure final probabilities are valid
+        mean_proba = torch.clamp(mean_proba, min=1e-6, max=1-1e-6)
         
-        return mean_prediction, total_variance
-
+        # Epistemic uncertainty
+        epistemic_uncertainty = probas.var(dim=0)
+        
+        # Aleatoric uncertainty
+        aleatoric_uncertainty = torch.exp(torch.stack(log_variances).mean(dim=0))
+        
+        # Total uncertainty
+        total_uncertainty = epistemic_uncertainty + aleatoric_uncertainty
+        
+        return mean_proba, total_uncertainty

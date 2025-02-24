@@ -127,10 +127,6 @@ def log_detailed_metrics(targets, predictions):
     return f1
 
 def binary_classification_uncertainty_loss(pred_proba, pred_log_var, targets, pos_weight):
-            """
-            Custom loss function that incorporates aleatoric uncertainty
-            for binary classification with class weighting
-            """
             variance = torch.exp(pred_log_var)
             
             bce_loss = F.binary_cross_entropy(pred_proba, targets, 
@@ -144,14 +140,53 @@ def binary_classification_uncertainty_loss(pred_proba, pred_log_var, targets, po
             return total_loss.mean()
 
 
+def binary_classification_uncertainty_loss_transformer(pred_proba, pred_log_var, targets, pos_weight):
+    """
+    Stabilized loss function for binary classification with uncertainty
+    """
+    # Ensure tensors are on the same device and have correct shape
+    if len(pred_proba.shape) > 1:
+        pred_proba = pred_proba.squeeze()
+    if len(pred_log_var.shape) > 1:
+        pred_log_var = pred_log_var.squeeze()
+    if len(targets.shape) > 1:
+        targets = targets.squeeze()
+    
+    # Clamp probabilities and variance for numerical stability
+    pred_proba = torch.clamp(pred_proba, min=1e-6, max=1-1e-6)
+    pred_log_var = torch.clamp(pred_log_var, min=-10, max=10)  # Prevent extreme variances
+    variance = torch.exp(pred_log_var)
+    variance = torch.clamp(variance, min=1e-6, max=100)  # Reasonable variance range
+    
+    # Calculate BCE loss with stability improvements
+    bce_loss = F.binary_cross_entropy(
+        pred_proba, 
+        targets,
+        reduction='none'
+    )
+    
+    if pos_weight is not None:
+        # Apply class weights with gradient scaling
+        weights = torch.where(targets == 1, pos_weight, torch.ones_like(pos_weight))
+        weights = weights / weights.mean()  # Normalize weights
+        bce_loss = bce_loss * weights
+    
+    # Calculate uncertainty loss with gradient scaling
+    uncertainty_loss = (bce_loss / variance) + 0.5 * torch.log(variance)
+    
+    # Apply gradient clipping at the loss level
+    uncertainty_loss = torch.clamp(uncertainty_loss, max=100)
+    
+    return uncertainty_loss.mean()
+
 def objective(trial):
     wandb.finish()
 
     # Initialize wandb run for this trial
     wandb.init(
         project=f"ihm_{args.model}_Probabilitic_optuna", 
-        group=f"{args.model}_fixed_mc_dropout",
-        name=f"{args.model}_fixed_mc_dropout_trial_{trial.number}",
+        group=f"{args.model}_classification",
+        name=f"{args.model}_classification_trial_{trial.number}",
         reinit=True
     )
     try:
@@ -169,27 +204,33 @@ def objective(trial):
         }
         
         if args.model == "transformer":
-            d_model = trial.suggest_int("d_model", 32, 256, step=32)
-    
-            valid_heads = [h for h in range(2, 9) if d_model % h == 0]
-            if not valid_heads:
-                d_model = ((d_model + 7) // 8) * 8
-                valid_heads = [h for h in range(2, 9) if d_model % h == 0]
+            configurations = [
+                {"d_model": 64, "nhead": 2},
+                {"d_model": 64, "nhead": 4},
+                {"d_model": 128, "nhead": 2},
+                {"d_model": 128, "nhead": 4},
+                {"d_model": 128, "nhead": 8},
+                {"d_model": 256, "nhead": 4},
+                {"d_model": 256, "nhead": 8}
+            ]
+            
+            # Select one configuration
+            config_idx = trial.suggest_categorical("model_config", list(range(len(configurations))))
+            selected_config = configurations[config_idx]
             
             config = {
                 "input_size": 76,
-                "d_model": d_model,
+                "d_model": selected_config["d_model"],
+                "nhead": selected_config["nhead"],
                 "num_layers": trial.suggest_int('num_layers', 1, 4),
-                "nhead": trial.suggest_categorical("nhead", valid_heads),
                 "dim_feedforward": trial.suggest_int("dim_feedforward", 64, 512, step=64),
-                "learning_rate": trial.suggest_float("learning_rate", 1e-5, 1e-3, log=True),
+                "learning_rate": trial.suggest_float("learning_rate", 1e-4, 1e-3, log=True),
                 "dropout": trial.suggest_float("dropout", 0.2, 0.8),
                 "batch_size": trial.suggest_categorical('batch_size', [32, 64, 128]),
                 "num_mc_samples": 100,
+                "weight_decay": trial.suggest_loguniform("weight_decay", 1e-4, 1e-2),
                 "num_epochs": trial.suggest_int('num_epochs', 5, 15),
-                "weight_decay": trial.suggest_loguniform("weight_decay", 1e-6, 1e-2),
             }
-
 
         wandb.config.update(config)
         
@@ -267,6 +308,21 @@ def objective(trial):
         pos_weight_tensor = torch.tensor([pos_weight], device=device)
         criterion = nn.BCELoss(weight=pos_weight_tensor)
         optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"])
+        if args.model == "transformer":
+            optimizer = torch.optim.AdamW(  # Switch to AdamW
+                                        model.parameters(),
+                                        lr=config["learning_rate"],
+                                        weight_decay=config["weight_decay"],
+                                        eps=1e-8  # Increase epsilon for better stability
+                                        )
+
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                                                                optimizer,
+                                                                mode='min',
+                                                                factor=0.5,
+                                                                patience=3,
+                                                                min_lr=1e-6
+                                                                )
 
         # Training loop
         for epoch in range(config["num_epochs"]):
@@ -284,14 +340,33 @@ def objective(trial):
                 optimizer.zero_grad()
 
                 mean, log_var = model(x)
+                    
+                if args.model == "transformer":
+                    if torch.any(torch.isnan(mean)) or torch.any(torch.isnan(log_var)):
+                        print(f"Warning: NaN detected in model outputs")
+                        continue
 
-                loss = binary_classification_uncertainty_loss(
-                    mean,
-                    log_var, 
-                    y,
-                    pos_weight_tensor
-                )
+                    loss = binary_classification_uncertainty_loss_transformer(
+                        mean,
+                        log_var, 
+                        y,
+                        pos_weight_tensor
+                    )
 
+                    if torch.isnan(loss) or torch.isinf(loss):
+                        print(f"Warning: Invalid loss value: {loss}")
+                        print(f"Probabilities range: [{mean.min()}, {mean.max()}]")
+                        print(f"Log variance range: [{log_var.min()}, {log_var.max()}]")
+                        continue
+                
+                else:
+                    loss = binary_classification_uncertainty_loss(
+                        mean,
+                        log_var, 
+                        y,
+                        pos_weight_tensor
+                    )
+ 
                 loss.backward()
 
                 if args.model == "transformer":
@@ -319,7 +394,15 @@ def objective(trial):
                 
                 mean, log_var = model(x)
                 
-                loss = binary_classification_uncertainty_loss(
+                if args.model == "transformer":
+                    loss = binary_classification_uncertainty_loss_transformer(
+                        mean,
+                        log_var, 
+                        y,
+                        pos_weight_tensor
+                    )
+                else:
+                    loss = binary_classification_uncertainty_loss(
                     mean,
                     log_var, 
                     y,
@@ -333,6 +416,10 @@ def objective(trial):
                 targets_val.append(y.cpu().numpy())
 
             val_loss /= len(val_raw[0])
+
+            if args.model == "transformer":
+                scheduler.step(val_loss)
+
             predictions = [pred[0] for pred in predictions_val]
             targets = [target[0] for target in targets_val]
             
@@ -411,6 +498,14 @@ def objective(trial):
 
         return f1_score_testing
     
+    except RuntimeError as e:
+        print(f"Error in training step:")
+        print(f"Input shape: {x.shape}")
+        print(f"Target shape: {y.shape}")
+        print(f"Mean output shape: {mean.shape if 'mean' in locals() else 'Not computed'}")
+        print(f"Log var shape: {log_var.shape if 'log_var' in locals() else 'Not computed'}")
+        raise e
+
     finally:
         wandb.finish()
 
