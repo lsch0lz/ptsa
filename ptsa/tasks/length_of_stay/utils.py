@@ -5,18 +5,84 @@ import random
 
 from ptsa.utils import metrics, utils
 
+def drop_columns(data, header, columns_to_drop):
+    """
+    Drops specified columns from the data
+    
+    Args:
+        data: The preprocessed data
+        header: Header information (list of column names)
+        columns_to_drop: List of column names to drop
+    
+    Returns:
+        Tuple of (modified data, indices of dropped columns, new_header)
+    """
+    # Find indices of columns to drop
+    indices_to_drop = []
+    for col in columns_to_drop:
+        for i, header_item in enumerate(header):
+            if col in header_item:
+                indices_to_drop.append(i)
+    
+    # Create new header without dropped columns
+    new_header = [h for i, h in enumerate(header) if i not in indices_to_drop]
+    
+    # Drop columns from data
+    if isinstance(data, list):
+        return [np.delete(x, indices_to_drop, axis=1) for x in data], indices_to_drop, new_header
+    else:
+        return np.delete(data, indices_to_drop, axis=1), indices_to_drop, new_header
 
-def preprocess_chunk(data, ts, discretizer, normalizer=None):
-    data = [discretizer.transform(X, end=t)[0] for (X, t) in zip(data, ts)]
+
+class NormalizerWrapper:
+    def __init__(self, normalizer, dropped_indices):
+        self.normalizer = normalizer
+        self.dropped_indices = dropped_indices
+        
+        # Create a mapping from new column indices to original indices
+        self.index_mapping = {}
+        j = 0
+        for i in range(len(normalizer._means)):
+            if i not in dropped_indices:
+                self.index_mapping[j] = i
+                j += 1
+    
+    def transform(self, X):
+        # Apply normalization using the mapping
+        ret = X.copy()
+        for i in range(X.shape[1]):
+            if i in self.index_mapping:
+                original_col = self.index_mapping[i]
+                if original_col in self.normalizer._fields:
+                    ret[:, i] = (X[:, i] - self.normalizer._means[original_col]) / self.normalizer._stds[original_col]
+        return ret
+
+
+def preprocess_chunk(data, ts, discretizer, normalizer=None, columns_to_drop=None):
+    # First apply the discretizer
+    transformed_data = [discretizer.transform(X, end=t)[0] for (X, t) in zip(data, ts)]
+    
+    # Get the header once to identify column indices
+    if columns_to_drop and len(data) > 0:
+        header = discretizer.transform(data[0], end=ts[0])[1].split(',')
+        transformed_data, dropped_indices, new_header = drop_columns(transformed_data, header, columns_to_drop)
+        
+        # If normalizer is provided, create a wrapper with the adjusted indices
+        if normalizer is not None:
+            normalizer_wrapper = NormalizerWrapper(normalizer, dropped_indices)
+            transformed_data = [normalizer_wrapper.transform(X) for X in transformed_data]
+            return transformed_data
+    
+    # Original normalization if no columns were dropped
     if normalizer is not None:
-        data = [normalizer.transform(X) for X in data]
-    return data
+        transformed_data = [normalizer.transform(X) for X in transformed_data]
+    
+    return transformed_data
 
 
 class BatchGen(object):
-
     def __init__(self, reader, partition, discretizer, normalizer,
-                 batch_size, steps, shuffle, return_names=False):
+                 batch_size, steps, shuffle, return_names=False, columns_to_drop=None):
         self.reader = reader
         self.partition = partition
         self.discretizer = discretizer
@@ -24,6 +90,7 @@ class BatchGen(object):
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.return_names = return_names
+        self.columns_to_drop = columns_to_drop
 
         if steps is None:
             self.n_examples = reader.get_number_of_examples()
@@ -52,7 +119,7 @@ class BatchGen(object):
                 ys = ret["y"]
                 names = ret["name"]
 
-                Xs = preprocess_chunk(Xs, ts, self.discretizer, self.normalizer)
+                Xs = preprocess_chunk(Xs, ts, self.discretizer, self.normalizer, self.columns_to_drop)
                 (Xs, ys, ts, names) = utils.sort_and_shuffle([Xs, ys, ts, names], B)
 
                 for i in range(0, current_size, B):

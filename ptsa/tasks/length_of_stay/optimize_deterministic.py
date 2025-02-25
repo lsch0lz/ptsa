@@ -12,14 +12,13 @@ import optuna
 import matplotlib.pyplot as plt
 
 from ptsa.tasks.readers import LengthOfStayReader
-from ptsa.tasks.length_of_stay.utils import BatchGen, drop_columns
+from ptsa.tasks.length_of_stay.utils import BatchGen
 from ptsa.utils.preprocessing import Normalizer, Discretizer
 from ptsa.tasks.length_of_stay.utils import utils
 
-from ptsa.models.probabilistic.bayesian_lstm import LSTM
-from ptsa.models.probabilistic.rnn import RNN
-from ptsa.models.probabilistic.gru import GRU
-from ptsa.models.probabilistic.transformer import TransformerLOS
+from ptsa.models.deterministic.lstm import LSTM 
+from ptsa.models.deterministic.rnn import RNN
+from ptsa.models.deterministic.gru import GRU
 
 # EXAMPLE USAGE
 # python ptsa/tasks/length_of_stay/train_probabilistic_lstm.py --data /vol/tmp/scholuka/mimic-iv-benchmarks/data/length-of-stay --network ptsa/models/probabilistic/gru.py --model_name test_gru --model gru
@@ -70,7 +69,7 @@ def objective(trial):
 
     # Initialize wandb run for this trial
     wandb.init(
-        project=f"final_probabilistic_length_of_stay", 
+        project=f"final_deterministic_length_of_stay", 
         group=f"final_{args.model}_final_variables",
         name=f"final_{args.model}_final_variables_{trial.number}",
         reinit=True
@@ -118,7 +117,7 @@ def objective(trial):
 
         wandb.config.update(config)
         
-        device = "cuda:3" if torch.cuda.is_available() else "cpu" 
+        device = "cuda:2" if torch.cuda.is_available() else "cpu" 
 
         model = nn.Module()
         if args.model == "lstm":
@@ -127,6 +126,7 @@ def objective(trial):
             model = RNN(config["input_size"], config["hidden_size"], config["num_layers"], config["dropout"]).to(device)
         elif args.model == "gru": 
             model = GRU(config["input_size"], config["hidden_size"], config["num_layers"], config["dropout"]).to(device)
+        """
         elif args.model == "transformer":
             model = TransformerLOS(input_size=config["input_size"],
                                 d_model=config["d_model"],
@@ -134,11 +134,11 @@ def objective(trial):
                                 num_layers=config["num_layers"],
                                 dropout=config["dropout"],
                                 dim_feedforward=config["dim_feedforward"]).to(device)
-
+        """
 
         print(f"Model device: {next(model.parameters()).device}")
 
-        criterion = nll_loss
+        criterion = nn.MSELoss()
         optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"])
 
         # data loading
@@ -254,9 +254,9 @@ def objective(trial):
                 x = torch.FloatTensor(x).to(device)
                 y = torch.FloatTensor(y).to(device)
                 
-                mean, log_var = model(x)
+                outputs = model(x)
 
-                loss = criterion(mean, log_var, y)
+                loss = criterion(outputs, y)
                 
                 optimizer.zero_grad()
                 loss.backward()
@@ -280,9 +280,9 @@ def objective(trial):
                     x = torch.FloatTensor(x).to(device)
                     y = torch.FloatTensor(y).to(device)
                     
-                    mean, log_var = model(x)
+                    outputs = model(x)
 
-                    loss = criterion(mean, log_var, y)
+                    loss = criterion(outputs, y)
                     
                     val_loss += loss.item()
                 
@@ -300,13 +300,12 @@ def objective(trial):
                 torch.save(model.state_dict(), args.model_name)
 
 
-        wandb.log_artifact(args.model_name, name="uncertainty_model", type="model")
+        wandb.log_artifact(args.model_name, name="deterministic_model", type="model")
         model.load_state_dict(torch.load(args.model_name))
 
         # Testing
         model.eval()
         all_predictions = []
-        all_uncertainties = []
         all_targets = []
 
         with torch.no_grad():
@@ -316,31 +315,24 @@ def objective(trial):
                 x = torch.FloatTensor(x).to(device)
                 y = torch.FloatTensor(y).to(device)
                 
-                mean, variance = model.predict_with_uncertainty(x, num_samples=config["num_mc_samples"])
-
-
-                all_predictions.append(mean.cpu().numpy())
-                all_uncertainties.append(variance.cpu().numpy())
+                outputs = model(x)
+        
+                all_predictions.append(outputs.cpu().numpy())
                 all_targets.append(y.cpu().numpy())
 
         all_predictions = np.concatenate(all_predictions, axis=0)
-        all_uncertainties = np.concatenate(all_uncertainties, axis=0)
         all_targets = np.concatenate(all_targets, axis=0)
 
         mse = np.mean((all_predictions - all_targets) ** 2)
 
         rmse = np.sqrt(mse)
 
-        mean_uncertainty = np.mean(all_uncertainties)
-
         print(f'Final Test MSE: {mse:.4f}')
-        print(f'Final Test RMSE: {rmse:.4f}')  
-        print(f"Final Test Uncertainty: {mean_uncertainty:.4f}")
+        print(f'Final Test RMSE: {rmse:.4f}') 
 
         wandb.log({
             "MSE": mse,
             "RMSE": rmse,
-            "Mean Uncertainty": mean_uncertainty,
             "Dataset Fraction": args.dataset_fraction
         })
 
