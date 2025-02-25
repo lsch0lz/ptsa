@@ -56,6 +56,36 @@ def even_out_number_of_data_points(data):
     return (balanced_data_points, balanced_labels)
 
 
+def remove_columns(data, discretizer_header, columns_to_remove):
+    """
+    Remove specified columns from the preprocessed data
+    
+    Args:
+        data: Tuple of (data_points, labels)
+        discretizer_header: List of column names from the discretizer
+        columns_to_remove: List of column names to remove
+    
+    Returns:
+        Tuple of (modified_data_points, labels)
+    """
+    data_points, labels = data
+    
+    # Get indices of columns to remove
+    indices_to_remove = []
+    for col in columns_to_remove:
+        for i, header in enumerate(discretizer_header):
+            if col in header:
+                indices_to_remove.append(i)
+    
+    # Create new data points with removed columns
+    modified_data_points = []
+    for patient_data in data_points:
+        # Remove columns
+        filtered_data = np.delete(patient_data, indices_to_remove, axis=1)
+        modified_data_points.append(filtered_data)
+    
+    return (modified_data_points, labels)
+
 def calculate_class_weights(labels):
     """
     Calculate class weights to handle class imbalance
@@ -132,15 +162,15 @@ def objective(trial):
 
     # Initialize wandb run for this trial
     wandb.init(
-        project="ihm_GRU_optuna", 
-        group=f"GRU_fine_tuning_with_model_2b28b42a2cafb3e2813506faacb7a55aeeb84e79",
-        name=f"GRU_fine_tuning_with_model_2b28b42a2cafb3e2813506faacb7a55aeeb84e79_trial_{trial.number}",
+        project="final_deterministic_IHM", 
+        group=f"final_{args.model}_classification",
+        name=f"final_{args.model}_classification_trial_{trial.number}",
         reinit=True
     )
     try:
         # Hyperparameters to tune
         config = {
-            "input_size": 76,
+            "input_size": 47,
             "hidden_size": trial.suggest_int('hidden_size', 32, 256),
             "num_layers": trial.suggest_int('num_layers', 1, 4),
             "learning_rate": trial.suggest_loguniform('learning_rate', 1e-5, 1e-2),
@@ -153,7 +183,7 @@ def objective(trial):
         wandb.config.update(config)
         
         # Device configuration
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        device = "cuda:1" if torch.cuda.is_available() else "cpu"
 
         # Data loading and preprocessing
         all_reader = InHospitalMortalityReader(
@@ -189,10 +219,20 @@ def objective(trial):
             normalizer_state = os.path.join(os.path.dirname(__file__), normalizer_state)
         normalizer.load_params(normalizer_state)
 
+        columns_to_remove = [
+            "Glascow coma scale motor response", 
+            "Capillary refill rate", 
+            "Glascow coma scale verbal response"
+        ]
+
         # Load data
         train_raw_data = load_data(train_reader, discretizer, normalizer, args.small_part)
         val_raw_data = load_data(val_reader, discretizer, normalizer, args.small_part)
         test_raw_data = load_data(test_reader, discretizer, normalizer, args.small_part)
+        
+        train_raw_data = remove_columns(train_raw_data, discretizer_header, columns_to_remove)
+        val_raw_data = remove_columns(val_raw_data, discretizer_header, columns_to_remove)
+        test_raw_data = remove_columns(test_raw_data, discretizer_header, columns_to_remove)
         
         train_raw = even_out_number_of_data_points(train_raw_data)
         val_raw = even_out_number_of_data_points(val_raw_data)
