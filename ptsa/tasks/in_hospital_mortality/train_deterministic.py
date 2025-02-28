@@ -22,6 +22,7 @@ from ptsa.utils import utils
 from ptsa.models.deterministic.lstm_classification import LSTM 
 from ptsa.models.deterministic.rnn_classification import RNN
 from ptsa.models.deterministic.gru_classification import GRU
+from ptsa.models.deterministic.transformer_classification import TransformerIHM
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +180,35 @@ def objective(trial):
             "num_epochs": trial.suggest_int('num_epochs', 10, 40),
             "weight_decay": trial.suggest_loguniform("weight_decay", 1e-6, 1e-2),
         }
-        
+        if args.model == "transformer":
+            configurations = [
+                {"d_model": 64, "nhead": 2},
+                {"d_model": 64, "nhead": 4},
+                {"d_model": 128, "nhead": 2},
+                {"d_model": 128, "nhead": 4},
+                {"d_model": 128, "nhead": 8},
+                {"d_model": 256, "nhead": 4},
+                {"d_model": 256, "nhead": 8}
+            ]
+            
+            # Select one configuration
+            config_idx = trial.suggest_categorical("model_config", list(range(len(configurations))))
+            selected_config = configurations[config_idx]
+            
+            config = {
+                "input_size": 47,
+                "d_model": selected_config["d_model"],
+                "nhead": selected_config["nhead"],
+                "num_layers": trial.suggest_int('num_layers', 1, 4),
+                "dim_feedforward": trial.suggest_int("dim_feedforward", 64, 512, step=64),
+                "learning_rate": trial.suggest_float("learning_rate", 1e-4, 1e-3, log=True),
+                "dropout": trial.suggest_float("dropout", 0.2, 0.8),
+                "batch_size": trial.suggest_categorical('batch_size', [32, 64, 128]),
+                "num_mc_samples": 100,
+                "weight_decay": trial.suggest_loguniform("weight_decay", 1e-4, 1e-2),
+                "num_epochs": trial.suggest_int('num_epochs', 5, 15),
+            }
+
         wandb.config.update(config)
         
         # Device configuration
@@ -253,6 +282,14 @@ def objective(trial):
             model = RNN(config["input_size"], config["hidden_size"], config["num_layers"], config["dropout"]).to(device)
         elif args.model == "gru":
             model = GRU(config["input_size"], config["hidden_size"], config["num_layers"], config["dropout"]).to(device)
+        elif args.model == "transformer":
+            model = TransformerIHM(input_size=config["input_size"],
+                                d_model=config["d_model"],
+                                nhead=config["nhead"],
+                                num_layers=config["num_layers"],
+                                dropout=config["dropout"],
+                                dim_feedforward=config["dim_feedforward"]).to(device)
+
 
         # Loss and Optimizer
         pos_weight_tensor = torch.tensor([pos_weight], device=device)
