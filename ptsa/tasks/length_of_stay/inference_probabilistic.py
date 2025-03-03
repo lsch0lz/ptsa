@@ -136,13 +136,20 @@ class LOSProbabilisticInference:
 
         normalizer.load_params(normalizer_state)
 
+        columns_to_drop = [
+                    "Glascow coma scale motor response", 
+                    "Capillary refill rate", 
+                    "Glascow coma scale verbal response"
+                ]
+        
         train_data_gen = BatchGen(reader=train_reader,
                                     discretizer=discretizer,
                                     normalizer=normalizer,
                                     batch_size=self.config["batch_size"],
                                     steps=None,
                                     shuffle=True,
-                                    partition="custom")
+                                    partition="custom",
+                                    columns_to_drop=columns_to_drop)
 
         val_data_gen = BatchGen(reader=val_reader,
                                 discretizer=discretizer,
@@ -150,7 +157,8 @@ class LOSProbabilisticInference:
                                 batch_size=self.config["batch_size"],
                                 steps=None,
                                 shuffle=False,
-                                partition="custom")
+                                partition="custom",
+                                columns_to_drop=columns_to_drop)
 
         test_data_gen = BatchGen(reader=test_reader,
                                     discretizer=discretizer,
@@ -158,7 +166,8 @@ class LOSProbabilisticInference:
                                     batch_size=self.config["batch_size"],
                                     steps=None,
                                     shuffle=False,
-                                    partition="custom")
+                                    partition="custom",
+                                    columns_to_drop=columns_to_drop)
 
 
         return train_data_gen, val_data_gen, test_data_gen

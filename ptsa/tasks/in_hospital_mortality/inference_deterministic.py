@@ -24,6 +24,8 @@ from ptsa.models.deterministic.lstm_classification import LSTM
 from ptsa.models.deterministic.rnn_classification import RNN
 from ptsa.models.deterministic.gru_classification import GRU
 
+from ptsa.tasks.in_hospital_mortality.train_deterministic import remove_columns
+
 logger = logging.getLogger(__name__)
 
 logging.basicConfig(level=logging.INFO)
@@ -137,12 +139,22 @@ class IHMModelInference:
             normalizer_state = f'ihm_ts1.0.input_str_previous.start_time_zero.normalizer'
             normalizer_state = os.path.join(os.path.dirname(__file__), normalizer_state)
         normalizer.load_params(normalizer_state)
-
+        
+        columns_to_remove = [
+            "Glascow coma scale motor response", 
+            "Capillary refill rate", 
+            "Glascow coma scale verbal response"
+        ]
+        
         # Load data
         train_raw_data = load_data(train_reader, discretizer, normalizer, False)
         val_raw_data = load_data(val_reader, discretizer, normalizer, False)
         test_raw_data = load_data(test_reader, discretizer, normalizer, False)
 
+        train_raw_data = remove_columns(train_raw_data, discretizer_header, columns_to_remove)
+        val_raw_data = remove_columns(val_raw_data, discretizer_header, columns_to_remove)
+        test_raw_data = remove_columns(test_raw_data, discretizer_header, columns_to_remove)
+        
         train_raw = self._even_out_number_of_data_points(train_raw_data)
         val_raw = self._even_out_number_of_data_points(val_raw_data)
         test_raw = self._even_out_number_of_data_points(test_raw_data)

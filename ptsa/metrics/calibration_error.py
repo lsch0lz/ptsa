@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from scipy import stats
 from matplotlib.ticker import MaxNLocator
 
-from ptsa.tasks.length_of_stay.inference_probabilistic import IHMProbabilisticInference
+from ptsa.tasks.length_of_stay.inference_probabilistic import LOSProbabilisticInference
 
 
 def calculate_bca_confidence_intervals(data, statistic_func, confidence_level=0.95, n_bootstraps=1000):
@@ -152,30 +152,30 @@ def create_error_based_calibration_plot(y_true, predicted_means, predicted_varia
 # Example usage
 if __name__ == "__main__":
     config = {
-            "input_size": 76,
-            "hidden_size": 64,
+            "input_size": 47,
+            "hidden_size": 67,
             "num_layers": 2,
             "learning_rate": 0.001,
-            "dropout": 0.5,
-            "batch_size": 64,
-            "num_epochs": 5,
+            "dropout": 0.24453618737354016,
+            "batch_size": 128,
+            "num_epochs": 12,
             "weight_decay": 0.001288495142480056,
             "num_mc_samples": 100
             }
-    data_path = "/vol/tmp/scholuka/mimic-iv-benchmarks/data/length-of-stay/"
-    model_path = "/vol/tmp/scholuka/ptsa/data/models/length_of_stay/probabilistic/aleatoric_lstm.pth"
+    data_path = "/vol/tmp/scholuka/mimic-iv-benchmarks/data/length-of-stay-own/"
+    model_path = "/vol/tmp/scholuka/ptsa/data/models/length_of_stay/probabilistic/final/lstm_final.pth"
 
 
-    inference_session = IHMProbabilisticInference(config=config, 
+    inference_session = LOSProbabilisticInference(config=config, 
                                                   data_path=data_path, 
                                                   model_path=model_path,
                                                   model_name="LSTM", 
                                                   device="cuda:3",
-                                                  num_batches_inference=1000,
+                                                  num_batches_inference=800,
                                                   limit_num_test_sampled=True)
-    _, _, test_data = inference_session.load_test_data()
+    train_data , _, test_data = inference_session.load_test_data()
 
-    predicted_means, predicted_variances, y_true = inference_session.infer_on_data_points(test_data)
+    predicted_means, predicted_variances, y_true = inference_session.infer_on_data_points(train_data)
     
     predicted_means = np.array(predicted_means).flatten()
     predicted_variances = np.array(predicted_variances).flatten()
