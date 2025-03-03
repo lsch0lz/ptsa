@@ -19,6 +19,7 @@ from ptsa.tasks.length_of_stay.utils import utils
 from ptsa.models.deterministic.lstm import LSTM 
 from ptsa.models.deterministic.rnn import RNN
 from ptsa.models.deterministic.gru import GRU
+from ptsa.models.deterministic.transformer import TransformerLOS
 
 # EXAMPLE USAGE
 # python ptsa/tasks/length_of_stay/train_probabilistic_lstm.py --data /vol/tmp/scholuka/mimic-iv-benchmarks/data/length-of-stay --network ptsa/models/probabilistic/gru.py --model_name test_gru --model gru
@@ -98,7 +99,6 @@ def objective(trial):
                 {"d_model": 256, "nhead": 8}
             ]
             
-            # Select one configuration
             config_idx = trial.suggest_categorical("model_config", list(range(len(configurations))))
             selected_config = configurations[config_idx]
             
@@ -126,7 +126,6 @@ def objective(trial):
             model = RNN(config["input_size"], config["hidden_size"], config["num_layers"], config["dropout"]).to(device)
         elif args.model == "gru": 
             model = GRU(config["input_size"], config["hidden_size"], config["num_layers"], config["dropout"]).to(device)
-        """
         elif args.model == "transformer":
             model = TransformerLOS(input_size=config["input_size"],
                                 d_model=config["d_model"],
@@ -134,7 +133,6 @@ def objective(trial):
                                 num_layers=config["num_layers"],
                                 dropout=config["dropout"],
                                 dim_feedforward=config["dim_feedforward"]).to(device)
-        """
 
         print(f"Model device: {next(model.parameters()).device}")
 
