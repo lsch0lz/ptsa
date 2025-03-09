@@ -24,6 +24,7 @@ from ptsa.tasks.length_of_stay.utils import BatchGen
 from ptsa.models.probabilistic.bayesian_lstm import LSTM 
 from ptsa.models.probabilistic.rnn import RNN
 from ptsa.models.probabilistic.gru import GRU
+from ptsa.models.probabilistic.transformer import TransformerLOS
 
 logging.basicConfig(level=logging.INFO)
 
@@ -51,6 +52,14 @@ class LOSProbabilisticInference:
             model = RNN(self.config["input_size"], self.config["hidden_size"], self.config["num_layers"], self.config["dropout"]).to(self.device)
         elif self.model_name == "GRU":
             model = GRU(self.config["input_size"], self.config["hidden_size"], self.config["num_layers"], self.config["dropout"]).to(self.device)
+        elif self.model_name == "transformer":
+            model = TransformerLOS(input_size=self.config["input_size"],
+                                    d_model=self.config["d_model"],
+                                    nhead=self.config["nhead"],
+                                    num_layers=self.config["num_layers"],
+                                    dropout=self.config["dropout"],
+                                    dim_feedforward=self.config["dim_feedforward"]).to(self.device)
+
 
         model.load_state_dict(torch.load(self.model_path, weights_only=True))
 
