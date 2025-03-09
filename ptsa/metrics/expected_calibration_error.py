@@ -51,29 +51,32 @@ if __name__ == "__main__":
 
     config = {
             "input_size": 47,
-            "hidden_size": 159,
-            "num_layers": 4,
-            "learning_rate": 0.00004097747048384285,
-            "dropout": 0.6868715047076297,
-            "batch_size": 128,
+            "hidden_size": 78,
+            "num_layers": 3,
+            "learning_rate": 0.00001396494862232231,
+            "dropout": 0.5114196289586067,
+            "batch_size": 32,
             "num_epochs": 36,
             "weight_decay": 0.001288495142480056,
-            "num_mc_samples": 100
+            "num_mc_samples": 1000,
+            "d_model": 128,
+            "dim_feedforward": 384,
+            "nhead": 8
             }
-    data_path = "/vol/tmp/scholuka/mimic-iv-benchmarks/data/in-hospital-mortality/"
-    model_path = "/vol/tmp/scholuka/ptsa/data/models/in_hospital_mortality/final/lstm_ihm_final.pth"
+    data_path = "/vol/tmp/scholuka/mimic-iv-benchmarks/data/in-hospital-mortality-own"
+    model_path = "/vol/tmp/scholuka/ptsa/data/models/in_hospital_mortality/final/tranformer_ihm_final_model.pth"
 
 
     inference_session = IHMModelInference(config=config, 
                                                   data_path=data_path, 
                                                   model_path=model_path,
-                                                  model_name="LSTM", 
+                                                  model_name="transformer", 
                                                   device="cuda:3",
                                                   probabilistic=PROBABILISTIC_MODEL
                                                   )
-    _, _, test_data = inference_session.load_test_data()
+    train_data, _, test_data = inference_session.load_test_data()
 
-    predictions, y_true, all_uncertainties = inference_session.infer_on_data_points(test_data)
+    predictions, y_true, all_uncertainties = inference_session.infer_on_data_points(train_data)
     
     predictions = np.array(predictions).flatten()
     all_uncertainties = np.array(all_uncertainties).flatten()

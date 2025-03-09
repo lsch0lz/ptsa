@@ -23,6 +23,7 @@ from ptsa.utils import utils
 from ptsa.models.deterministic.lstm_classification import LSTM 
 from ptsa.models.deterministic.rnn_classification import RNN
 from ptsa.models.deterministic.gru_classification import GRU
+from ptsa.models.deterministic.transformer_classification import TransformerIHM
 
 from ptsa.tasks.in_hospital_mortality.train_deterministic import remove_columns
 
@@ -57,6 +58,14 @@ class IHMModelInference:
             model = RNN(self.config["input_size"], self.config["hidden_size"], self.config["num_layers"], self.config["dropout"]).to(self.device)
         elif self.model_name == "GRU":
             model = GRU(self.config["input_size"], self.config["hidden_size"], self.config["num_layers"], self.config["dropout"]).to(self.device)
+        elif self.model_name == "transformer":
+            model = TransformerIHM(input_size=self.config["input_size"],
+                                            d_model=self.config["d_model"],
+                                            nhead=self.config["nhead"],
+                                            num_layers=self.config["num_layers"],
+                                            dropout=self.config["dropout"],
+                                            dim_feedforward=self.config["dim_feedforward"]).to(self.device)
+
 
         model.load_state_dict(torch.load(self.model_path, weights_only=True))
 
@@ -66,13 +75,22 @@ class IHMModelInference:
         from ptsa.models.probabilistic.lstm_classification import LSTM 
         from ptsa.models.probabilistic.rnn_classification import RNN
         from ptsa.models.probabilistic.gru_classification import GRU
-            
+        from ptsa.models.probabilistic.transformer_classification import TransformerIHM
+
         if self.model_name == "LSTM":
             model = LSTM(self.config["input_size"], self.config["hidden_size"], self.config["num_layers"], self.config["dropout"]).to(self.device)
         elif self.model_name == "RNN":
             model = RNN(self.config["input_size"], self.config["hidden_size"], self.config["num_layers"], self.config["dropout"]).to(self.device)
         elif self.model_name == "GRU":
             model = GRU(self.config["input_size"], self.config["hidden_size"], self.config["num_layers"], self.config["dropout"]).to(self.device)
+        elif self.model_name == "transformer":
+            model = TransformerIHM(input_size=self.config["input_size"],
+                                            d_model=self.config["d_model"],
+                                            nhead=self.config["nhead"],
+                                            num_layers=self.config["num_layers"],
+                                            dropout=self.config["dropout"],
+                                            dim_feedforward=self.config["dim_feedforward"]).to(self.device)
+
 
         model.load_state_dict(torch.load(self.model_path, weights_only=True))
 
