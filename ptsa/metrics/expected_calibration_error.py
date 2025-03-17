@@ -50,30 +50,33 @@ if __name__ == "__main__":
     PROBABILISTIC_MODEL = True
 
     config = {
-            "input_size": 76,
-            "hidden_size": 80,
+            "input_size": 47,
+            "hidden_size": 78,
             "num_layers": 3,
-            "learning_rate": 0.00004097747048384285,
-            "dropout": 0.27197093767228886,
-            "batch_size": 64,
-            "num_epochs": 23,
+            "learning_rate": 0.00001396494862232231,
+            "dropout": 0.5114196289586067,
+            "batch_size": 32,
+            "num_epochs": 36,
             "weight_decay": 0.001288495142480056,
-            "num_mc_samples": 100
+            "num_mc_samples": 1000,
+            "d_model": 128,
+            "dim_feedforward": 384,
+            "nhead": 8
             }
-    data_path = "/vol/tmp/scholuka/mimic-iv-benchmarks/data/in-hospital-mortality/"
-    model_path = "/vol/tmp/scholuka/ptsa/data/models/in_hospital_mortality/rnn/rnn_ihm_probabilistic.pth"
+    data_path = "/vol/tmp/scholuka/mimic-iv-benchmarks/data/in-hospital-mortality-own"
+    model_path = "/vol/tmp/scholuka/ptsa/data/models/in_hospital_mortality/final/tranformer_ihm_final_model.pth"
 
 
     inference_session = IHMModelInference(config=config, 
                                                   data_path=data_path, 
                                                   model_path=model_path,
-                                                  model_name="RNN", 
+                                                  model_name="transformer", 
                                                   device="cuda:3",
                                                   probabilistic=PROBABILISTIC_MODEL
                                                   )
-    _, _, test_data = inference_session.load_test_data()
+    train_data, _, test_data = inference_session.load_test_data()
 
-    predictions, y_true, all_uncertainties = inference_session.infer_on_data_points(test_data)
+    predictions, y_true, all_uncertainties = inference_session.infer_on_data_points(train_data)
     
     predictions = np.array(predictions).flatten()
     all_uncertainties = np.array(all_uncertainties).flatten()
