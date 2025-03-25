@@ -425,9 +425,7 @@ def main():
     # Create a study object and specify the direction is 'maximize'
     
     study = optuna.create_study(
-        direction='maximize', 
-        pruner=optuna.pruners.MedianPruner(n_startup_trials=10, n_warmup_steps=6)
-    )
+        direction='maximize')
     
     # study = optuna.create_study(direction="maximize")
 
