@@ -375,8 +375,6 @@ def objective(trial):
             })
 
             trial.report(f1, epoch)
-            if trial.should_prune():
-                raise optuna.exceptions.TrialPruned()
 
             print(f'Epoch {epoch}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}')
 
@@ -463,7 +461,6 @@ def main():
     
     study = optuna.create_study(
         direction='maximize', 
-        pruner=optuna.pruners.MedianPruner(n_startup_trials=10, n_warmup_steps=6)
     )
     
     # study = optuna.create_study(direction="maximize")
