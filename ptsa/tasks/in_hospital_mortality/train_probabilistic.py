@@ -223,7 +223,7 @@ def objective(trial):
     try:
         # Hyperparameters to tune
         config = {
-            "input_size": 47,
+            "input_size": 38,
             "hidden_size": trial.suggest_int('hidden_size', 32, 256),
             "num_layers": trial.suggest_int('num_layers', 1, 4),
             "learning_rate": trial.suggest_loguniform('learning_rate', 1e-5, 1e-2),
@@ -250,7 +250,7 @@ def objective(trial):
             selected_config = configurations[config_idx]
             
             config = {
-                "input_size": 47,
+                "input_size": 38,
                 "d_model": selected_config["d_model"],
                 "nhead": selected_config["nhead"],
                 "num_layers": trial.suggest_int('num_layers', 1, 4),
