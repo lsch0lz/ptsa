@@ -162,15 +162,15 @@ def objective(trial):
 
     # Initialize wandb run for this trial
     wandb.init(
-        project="final_deterministic_IHM", 
-        group=f"final_{args.model}_classification",
-        name=f"final_{args.model}_classification_trial_{trial.number}",
+        project="final_final_deterministic_IHM", 
+        group=f"final_{args.model}_classification_old_model",
+        name=f"final_{args.model}_classification_old_model_trial_{trial.number}",
         reinit=True
     )
     try:
         # Hyperparameters to tune
         config = {
-            "input_size": 47,
+            "input_size": 38,
             "hidden_size": trial.suggest_int('hidden_size', 32, 256),
             "num_layers": trial.suggest_int('num_layers', 1, 4),
             "learning_rate": trial.suggest_loguniform('learning_rate', 1e-5, 1e-2),
@@ -183,7 +183,7 @@ def objective(trial):
         wandb.config.update(config)
         
         # Device configuration
-        device = "cuda:1" if torch.cuda.is_available() else "cpu"
+        device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
         # Data loading and preprocessing
         all_reader = InHospitalMortalityReader(
@@ -222,7 +222,8 @@ def objective(trial):
         columns_to_remove = [
             "Glascow coma scale motor response", 
             "Capillary refill rate", 
-            "Glascow coma scale verbal response"
+            "Glascow coma scale verbal response",
+            "Glascow coma scale eye opening"
         ]
 
         # Load data
