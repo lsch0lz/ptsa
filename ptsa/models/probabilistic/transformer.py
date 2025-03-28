@@ -7,7 +7,7 @@ from typing import Optional, Tuple
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model: int, max_seq_length: int = 5000, dropout: float = 0.1):
         super().__init__()
-        self.dropout_rate = dropout
+        self.dropout_rate = 0.0
 
         position = torch.arange(max_seq_length).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
@@ -90,12 +90,12 @@ class TransformerLOS(nn.Module):
         src_key_padding_mask: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # Input dropout
-        x = self._apply_dropout(src)
+        # x = self._apply_dropout(src)
         
         # Normalize and project input
-        x = self.input_norm(x)
+        x = self.input_norm(src)
         x = self.input_projection(x) * math.sqrt(self.d_model)
-        x = self._apply_dropout(x)
+        # x = self._apply_dropout(x)
         
         # Positional encoding
         x = self.pos_encoder(x)
@@ -106,7 +106,7 @@ class TransformerLOS(nn.Module):
             mask=src_mask,
             src_key_padding_mask=src_key_padding_mask
         )
-        x = self._apply_dropout(x)
+        # x = self._apply_dropout(x)
         
         # Use last sequence element
         x = x[:, -1, :]
