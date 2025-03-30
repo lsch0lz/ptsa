@@ -70,7 +70,7 @@ def objective(trial):
 
     # Initialize wandb run for this trial
     wandb.init(
-        project=f"final_final_probabilistic_length_of_stay", 
+        project=f"fixed_final_probabilistic_length_of_stay", 
         group=f"final_{args.model}",
         name=f"final_{args.model}_trial_{trial.number}",
         reinit=True

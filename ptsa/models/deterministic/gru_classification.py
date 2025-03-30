@@ -11,7 +11,7 @@ class GRU(nn.Module):
         self.num_layers = num_layers
         self.dropout = dropout
 
-        self.gru = nn.GRU(input_size, hidden_size, num_layers, batch_first=True, dropout=dropout)
+        self.gru = nn.GRU(input_size, hidden_size, num_layers, batch_first=True, dropout=0.0)
         self.fc = nn.Linear(hidden_size, 1)
         self.sigmoid = nn.Sigmoid()
 

@@ -40,14 +40,14 @@ class TransformerLOS(nn.Module):
         self.input_projection = nn.Linear(input_size, d_model)
         torch.nn.init.xavier_uniform_(self.input_projection.weight, gain=0.1)
         
-        self.pos_encoder = PositionalEncoding(d_model, dropout=dropout)
+        self.pos_encoder = PositionalEncoding(d_model, dropout=0.0)
         
         # Custom encoder layer for MC dropout
         encoder_layer = self._create_encoder_layer(
             d_model=d_model,
             nhead=nhead,
             dim_feedforward=dim_feedforward,
-            dropout=dropout,
+            dropout=0.0,
             activation=activation
         )
         

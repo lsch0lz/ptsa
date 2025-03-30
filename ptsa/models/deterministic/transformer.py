@@ -7,7 +7,7 @@ from typing import Optional, Tuple
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model: int, max_seq_length: int = 5000, dropout: float = 0.1):
         super().__init__()
-        self.dropout = nn.Dropout(p=dropout)
+        self.dropout = nn.Dropout(p=0.0)
 
         position = torch.arange(max_seq_length).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
@@ -37,13 +37,13 @@ class TransformerLOS(nn.Module):
         self.input_projection = nn.Linear(input_size, d_model)
         torch.nn.init.xavier_uniform_(self.input_projection.weight, gain=0.1)
         
-        self.pos_encoder = PositionalEncoding(d_model, dropout=dropout)
+        self.pos_encoder = PositionalEncoding(d_model, dropout=0.0)
         
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
             nhead=nhead,
             dim_feedforward=dim_feedforward,
-            dropout=dropout,
+            dropout=0.0,
             activation=activation,
             batch_first=True,
             norm_first=True

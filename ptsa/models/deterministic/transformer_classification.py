@@ -7,7 +7,7 @@ from typing import Optional
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model: int, max_seq_length: int = 5000, dropout: float = 0.1):
         super().__init__()
-        self.dropout = nn.Dropout(p=dropout)
+        self.dropout = nn.Dropout(p=0.0)
 
         position = torch.arange(max_seq_length).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
@@ -39,13 +39,13 @@ class TransformerIHM(nn.Module):
         
         self.input_dropout = nn.Dropout(p=dropout)
         
-        self.pos_encoder = PositionalEncoding(d_model, dropout=dropout)
+        self.pos_encoder = PositionalEncoding(d_model, dropout=0.0)
         
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
             nhead=nhead,
             dim_feedforward=dim_feedforward,
-            dropout=dropout,
+            dropout=0.0,
             activation=activation,
             batch_first=True,
             norm_first=True
@@ -73,7 +73,7 @@ class TransformerIHM(nn.Module):
     ) -> torch.Tensor:
         x = self.input_norm(src)
         x = self.input_projection(x) * math.sqrt(self.d_model)
-        x = self.input_dropout(x)
+        # x = self.input_dropout(x)
         
         x = self.pos_encoder(x)
         
@@ -86,7 +86,7 @@ class TransformerIHM(nn.Module):
         x = x[:, -1, :]
         
         x = self.final_norm(x)
-        x = self.final_dropout(x)
+        # x = self.final_dropout(x)
         
         logits = self.fc_logit(x).squeeze(-1)
         
