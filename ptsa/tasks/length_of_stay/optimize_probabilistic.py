@@ -78,7 +78,7 @@ def objective(trial):
     try:
 
         config = {
-            "input_size": 14,
+            "input_size": 38,
             "hidden_size": trial.suggest_int('hidden_size', 32, 256),
             "num_layers": trial.suggest_int('num_layers', 1, 4),
             "learning_rate": trial.suggest_loguniform('learning_rate', 1e-5, 1e-2),
@@ -104,7 +104,7 @@ def objective(trial):
             selected_config = configurations[config_idx]
             
             config = {
-                "input_size": 14,
+                "input_size": 38,
                 "d_model": selected_config["d_model"],
                 "nhead": selected_config["nhead"],
                 "num_layers": trial.suggest_int('num_layers', 1, 4),
@@ -118,7 +118,7 @@ def objective(trial):
 
         wandb.config.update(config)
         
-        device = "cuda:3" if torch.cuda.is_available() else "cpu" 
+        device = "cuda:0" if torch.cuda.is_available() else "cpu" 
 
         model = nn.Module()
         if args.model == "lstm":
