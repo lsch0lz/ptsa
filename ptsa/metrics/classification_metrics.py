@@ -129,25 +129,25 @@ def plot_precision_recall_curve(y_true, y_pred_proba):
     return avg_precision
 
 if __name__ == "__main__":
-    PROBABILISTIC_MODEL = False
+    PROBABILISTIC_MODEL = True
     model_type = "transformer"
 
     config = {
-            "input_size": 47,
-            "hidden_size": 99,
-            "num_layers": 2,
-            "learning_rate": 0.0009139142870085612,
-            "dropout": 0.2018675522864059,
-            "batch_size": 31,
-            "num_epochs": 29,
-            "weight_decay": 0.00003018240933325477,
+            "input_size": 38,
+            "hidden_size": 206,
+            "num_layers": 4,
+            "learning_rate": 0.00034262704911951214,
+            "dropout": 0.4235542456037869,
+            "batch_size": 32,
+            "num_epochs": 26,
+            "weight_decay": 0.0010025992862318614,
             "num_mc_samples": 100,
-            "d_model": 256,
-            "dim_feedforward": 448,
+            "d_model": 64,
+            "dim_feedforward": 320,
             "nhead": 4
             }
-    data_path = "/vol/tmp/scholuka/mimic-iv-benchmarks/data/in-hospital-mortality-own"
-    model_path = "/vol/tmp/scholuka/ptsa/data/models/in_hospital_mortality/deterministic/final_model_transformer_ihm.pth"
+    data_path = "/vol/tmp/scholuka/mimic-iv-benchmarks/data/in-hospital-mortality-fixed"
+    model_path = "/vol/tmp/scholuka/ptsa/data/models/in_hospital_mortality/final/final_transformer_prob_ihm.pth"
 
 
     inference_session = IHMModelInference(config=config, 
@@ -163,6 +163,8 @@ if __name__ == "__main__":
     
     predictions = np.array(predictions).flatten()
     all_uncertainties = np.array(all_uncertainties).flatten()
+    if PROBABILISTIC_MODEL:
+        print(f"UNCERTAINTY: {np.mean(all_uncertainties)}")
     y_true = np.array(y_true).flatten()
 
     classification_metrics = compute_classification_metrics(y_true, predictions)
