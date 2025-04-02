@@ -161,7 +161,8 @@ class IHMModelInference:
         columns_to_remove = [
             "Glascow coma scale motor response", 
             "Capillary refill rate", 
-            "Glascow coma scale verbal response"
+            "Glascow coma scale verbal response",
+            "Glascow coma scale eye opening"
         ]
         
         # Load data
