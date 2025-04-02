@@ -70,15 +70,15 @@ def objective(trial):
 
     # Initialize wandb run for this trial
     wandb.init(
-        project=f"final_deterministic_length_of_stay", 
-        group=f"final_{args.model}_final_variables",
-        name=f"final_{args.model}_final_variables_{trial.number}",
+        project=f"fixed_final_deterministic_length_of_stay", 
+        group=f"final_{args.model}",
+        name=f"final_{args.model}_trial_{trial.number}",
         reinit=True
     )
     try:
 
         config = {
-            "input_size": 47,
+            "input_size": 38,
             "hidden_size": trial.suggest_int('hidden_size', 32, 256),
             "num_layers": trial.suggest_int('num_layers', 1, 4),
             "learning_rate": trial.suggest_loguniform('learning_rate', 1e-5, 1e-2),
@@ -103,7 +103,7 @@ def objective(trial):
             selected_config = configurations[config_idx]
             
             config = {
-                "input_size": 47,
+                "input_size": 38,
                 "d_model": selected_config["d_model"],
                 "nhead": selected_config["nhead"],
                 "num_layers": trial.suggest_int('num_layers', 1, 4),
@@ -207,7 +207,8 @@ def objective(trial):
         columns_to_drop = [
             "Glascow coma scale motor response", 
             "Capillary refill rate", 
-            "Glascow coma scale verbal response"
+            "Glascow coma scale verbal response",
+            "Glascow coma scale eye opening"
         ]
 
         train_data_gen = BatchGen(reader=train_reader,

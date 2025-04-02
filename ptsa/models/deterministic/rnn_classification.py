@@ -8,7 +8,7 @@ class RNN(nn.Module):
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         
-        self.rnn = nn.RNN(input_size, hidden_size, num_layers, batch_first=True, dropout=dropout)
+        self.rnn = nn.RNN(input_size, hidden_size, num_layers, batch_first=True, dropout=0.0)
         self.fc = nn.Linear(hidden_size, 1)
         self.sigmoid = nn.Sigmoid()
 

@@ -7,7 +7,7 @@ from typing import Optional, Tuple
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model: int, max_seq_length: int = 5000, dropout: float = 0.1):
         super().__init__()
-        self.dropout_rate = dropout
+        self.dropout_rate = 0.0
 
         position = torch.arange(max_seq_length).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
@@ -40,13 +40,13 @@ class TransformerIHM(nn.Module):
         self.input_projection = nn.Linear(input_size, d_model)
         torch.nn.init.xavier_uniform_(self.input_projection.weight, gain=0.1)
         
-        self.pos_encoder = PositionalEncoding(d_model, dropout=dropout)
+        self.pos_encoder = PositionalEncoding(d_model, dropout=0.0)
         
         encoder_layer = self._create_encoder_layer(
             d_model=d_model,
             nhead=nhead,
             dim_feedforward=dim_feedforward,
-            dropout=dropout,
+            dropout=0.0,
             activation=activation
         )
         
@@ -94,7 +94,7 @@ class TransformerIHM(nn.Module):
         # Normalize and project input
         x = self.input_norm(x)
         x = self.input_projection(x) * math.sqrt(self.d_model)
-        x = self._apply_dropout(x)
+        # x = self._apply_dropout(x)
         
         # Positional encoding
         x = self.pos_encoder(x)
@@ -105,7 +105,7 @@ class TransformerIHM(nn.Module):
             mask=src_mask,
             src_key_padding_mask=src_key_padding_mask
         )
-        x = self._apply_dropout(x)
+        # x = self._apply_dropout(x)
         
         # Use last sequence element
         x = x[:, -1, :]
