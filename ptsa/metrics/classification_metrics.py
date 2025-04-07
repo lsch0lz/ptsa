@@ -146,7 +146,7 @@ if __name__ == "__main__":
             "dim_feedforward": 320,
             "nhead": 4
             }
-    data_path = "/vol/tmp/scholuka/mimic-iv-benchmarks/data/in-hospital-mortality-fixed"
+    data_path = "/vol/tmp/scholuka/mimic-iv-benchmarks/data/in-hospital-mortality-own-final"
     model_path = "/vol/tmp/scholuka/ptsa/data/models/in_hospital_mortality/final/final_transformer_prob_ihm.pth"
 
 
