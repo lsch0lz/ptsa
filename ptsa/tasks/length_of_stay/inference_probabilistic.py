@@ -21,10 +21,6 @@ from ptsa.tasks.in_hospital_mortality.utils import load_data
 from ptsa.utils import utils
 
 from ptsa.tasks.length_of_stay.utils import BatchGen
-from ptsa.models.probabilistic.bayesian_lstm import LSTM 
-from ptsa.models.probabilistic.rnn import RNN
-from ptsa.models.probabilistic.gru import GRU
-from ptsa.models.probabilistic.transformer import TransformerLOS
 
 logging.basicConfig(level=logging.INFO)
 
@@ -35,7 +31,8 @@ class LOSProbabilisticInference:
                  model_name: str, 
                  device: str, 
                  num_batches_inference: int,
-                 limit_num_test_sampled: bool) -> None:
+                 limit_num_test_sampled: bool,
+                 probabilistic: bool) -> None:
         self.logger = logging.getLogger(__name__)
         self.device = device
         self.config = config 
@@ -44,8 +41,16 @@ class LOSProbabilisticInference:
         self.model_name = model_name
         self.num_batches_inference = num_batches_inference * 64
         self.limit_num_test_sampled = limit_num_test_sampled
+        self.probabilistic = probabilistic
 
-    def _load_model(self):
+    def _load_model_deterministic(self):
+        from ptsa.models.deterministic.lstm import LSTM
+        from ptsa.models.deterministic.rnn import RNN
+        from ptsa.models.deterministic.gru import GRU
+        from ptsa.models.deterministic.transformer import TransformerLOS
+        
+        print(self.config)
+
         if self.model_name == "LSTM":
             model = LSTM(self.config["input_size"], self.config["hidden_size"], self.config["num_layers"], self.config["dropout"]).to(self.device)
         elif self.model_name == "RNN":
@@ -59,8 +64,31 @@ class LOSProbabilisticInference:
                                     num_layers=self.config["num_layers"],
                                     dropout=self.config["dropout"],
                                     dim_feedforward=self.config["dim_feedforward"]).to(self.device)
+        model.load_state_dict(torch.load(self.model_path, weights_only=True))
+
+        return model
 
 
+
+    def _load_model_probabilisitc(self):
+        from ptsa.models.probabilistic.bayesian_lstm import LSTM 
+        from ptsa.models.probabilistic.rnn import RNN
+        from ptsa.models.probabilistic.gru import GRU
+        from ptsa.models.probabilistic.transformer import TransformerLOS
+        
+        if self.model_name == "LSTM":
+            model = LSTM(self.config["input_size"], self.config["hidden_size"], self.config["num_layers"], self.config["dropout"]).to(self.device)
+        elif self.model_name == "RNN":
+            model = RNN(self.config["input_size"], self.config["hidden_size"], self.config["num_layers"], self.config["dropout"]).to(self.device)
+        elif self.model_name == "GRU":
+            model = GRU(self.config["input_size"], self.config["hidden_size"], self.config["num_layers"], self.config["dropout"]).to(self.device)
+        elif self.model_name == "transformer":
+            model = TransformerLOS(input_size=self.config["input_size"],
+                                    d_model=self.config["d_model"],
+                                    nhead=self.config["nhead"],
+                                    num_layers=self.config["num_layers"],
+                                    dropout=self.config["dropout"],
+                                    dim_feedforward=self.config["dim_feedforward"]).to(self.device)
         model.load_state_dict(torch.load(self.model_path, weights_only=True))
 
         return model
@@ -148,7 +176,8 @@ class LOSProbabilisticInference:
         columns_to_drop = [
                     "Glascow coma scale motor response", 
                     "Capillary refill rate", 
-                    "Glascow coma scale verbal response"
+                    "Glascow coma scale verbal response",
+                    "Glascow coma scale eye opening"
                 ]
         
         train_data_gen = BatchGen(reader=train_reader,
@@ -182,7 +211,10 @@ class LOSProbabilisticInference:
         return train_data_gen, val_data_gen, test_data_gen
 
     def infer_on_data_points(self, test_data):
-        model = self._load_model()
+        if self.probabilistic:
+            model = self._load_model_probabilisitc()
+        else:
+            model = self._load_model_deterministic()
         # Loss and Optimizer
 
         # Final testing and metrics logging
@@ -197,12 +229,16 @@ class LOSProbabilisticInference:
                 x, y = batch
                 x = torch.FloatTensor(x).to(self.device)
                 y = torch.FloatTensor(y).to(self.device)
-
-                mean, variance = model.predict_with_uncertainty(x, num_samples=self.config["num_mc_samples"])
                 
-                all_predictions.append(mean.cpu().numpy())
-                all_uncertainties.append(variance.cpu().numpy())
-                all_targets.append(y.cpu().numpy())
-
+                if self.probabilistic:
+                    mean, variance = model.predict_with_uncertainty(x, num_samples=self.config["num_mc_samples"])
+                    
+                    all_predictions.append(mean.cpu().numpy())
+                    all_uncertainties.append(variance.cpu().numpy())
+                    all_targets.append(y.cpu().numpy())
+                else:
+                    outputs = model(x)
+                    all_predictions.append(outputs.cpu().numpy())
+                    all_targets.append(y.cpu().numpy())
 
         return all_predictions, all_uncertainties, all_targets 
