@@ -12,7 +12,8 @@ from ptsa.tasks.in_hospital_mortality.inference_deterministic import IHMModelInf
 def compute_classification_metrics(
     y_true: np.ndarray, 
     y_pred_proba: np.ndarray, 
-    threshold: float = 0.5
+    threshold: float = 0.5,
+    uncertainties: np.ndarray = None
     ):
     """
     Compute various binary classification metrics.
@@ -50,7 +51,7 @@ def compute_classification_metrics(
     # Additional derived metrics
     prevalence = np.mean(y_true)
     
-    return {
+    metrics = {
         "accuracy": accuracy,
         "precision": precision,
         "recall": recall,
@@ -68,6 +69,17 @@ def compute_classification_metrics(
         "prevalence": prevalence,
         "negative_predictive_value": npv
     }
+
+    if uncertainties:
+        epsilon = 1e-15  # To avoid log(0)
+        p_y = np.copy(y_pred_proba)
+        p_y = np.clip(p_y, epsilon, 1 - epsilon)
+        p_y_true = np.where(y_true == 1, p_y, 1 - p_y)
+        nll = -np.mean(np.log(p_y_true))
+
+        metrics["nll"] = nll
+
+    return metrics
 
 def plot_roc_curve(y_true, y_pred_proba):
     """
@@ -130,15 +142,15 @@ def plot_precision_recall_curve(y_true, y_pred_proba):
 
 if __name__ == "__main__":
     PROBABILISTIC_MODEL = True
-    model_type = "transformer"
+    model_type = "RNN"
 
     config = {
             "input_size": 38,
             "hidden_size": 206,
-            "num_layers": 4,
+            "num_layers": 2,
             "learning_rate": 0.00034262704911951214,
-            "dropout": 0.4235542456037869,
-            "batch_size": 32,
+            "dropout": 0.5687026422892869,
+            "batch_size": 64,
             "num_epochs": 26,
             "weight_decay": 0.0010025992862318614,
             "num_mc_samples": 100,
@@ -147,7 +159,7 @@ if __name__ == "__main__":
             "nhead": 4
             }
     data_path = "/vol/tmp/scholuka/mimic-iv-benchmarks/data/in-hospital-mortality-own-final"
-    model_path = "/vol/tmp/scholuka/ptsa/data/models/in_hospital_mortality/final/final_transformer_prob_ihm.pth"
+    model_path = "/vol/tmp/scholuka/ptsa/data/models/in_hospital_mortality/final/final_gru_prob_ihm.pth"
 
 
     inference_session = IHMModelInference(config=config, 
@@ -167,7 +179,10 @@ if __name__ == "__main__":
         print(f"UNCERTAINTY: {np.mean(all_uncertainties)}")
     y_true = np.array(y_true).flatten()
 
-    classification_metrics = compute_classification_metrics(y_true, predictions)
+    if PROBABILISTIC_MODEL:
+        classification_metrics = compute_classification_metrics(y_true, predictions, uncertainties=all_uncertainties)
+    else:
+        classification_metrics = compute_classification_metrics(y_true, predictions)
     print("*" * 20)
     print(f"Model Type: {model_type}")
     print(classification_metrics)
