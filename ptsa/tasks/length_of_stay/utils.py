@@ -6,28 +6,14 @@ import random
 from ptsa.utils import metrics, utils
 
 def drop_columns(data, header, columns_to_drop):
-    """
-    Drops specified columns from the data
-    
-    Args:
-        data: The preprocessed data
-        header: Header information (list of column names)
-        columns_to_drop: List of column names to drop
-    
-    Returns:
-        Tuple of (modified data, indices of dropped columns, new_header)
-    """
-    # Find indices of columns to drop
     indices_to_drop = []
     for col in columns_to_drop:
         for i, header_item in enumerate(header):
             if col in header_item:
                 indices_to_drop.append(i)
     
-    # Create new header without dropped columns
     new_header = [h for i, h in enumerate(header) if i not in indices_to_drop]
     
-    # Drop columns from data
     if isinstance(data, list):
         return [np.delete(x, indices_to_drop, axis=1) for x in data], indices_to_drop, new_header
     else:
@@ -39,7 +25,6 @@ class NormalizerWrapper:
         self.normalizer = normalizer
         self.dropped_indices = dropped_indices
         
-        # Create a mapping from new column indices to original indices
         self.index_mapping = {}
         j = 0
         for i in range(len(normalizer._means)):
@@ -48,7 +33,6 @@ class NormalizerWrapper:
                 j += 1
     
     def transform(self, X):
-        # Apply normalization using the mapping
         ret = X.copy()
         for i in range(X.shape[1]):
             if i in self.index_mapping:
@@ -59,21 +43,17 @@ class NormalizerWrapper:
 
 
 def preprocess_chunk(data, ts, discretizer, normalizer=None, columns_to_drop=None):
-    # First apply the discretizer
     transformed_data = [discretizer.transform(X, end=t)[0] for (X, t) in zip(data, ts)]
-    
-    # Get the header once to identify column indices
+
     if columns_to_drop and len(data) > 0:
         header = discretizer.transform(data[0], end=ts[0])[1].split(',')
         transformed_data, dropped_indices, new_header = drop_columns(transformed_data, header, columns_to_drop)
-        
-        # If normalizer is provided, create a wrapper with the adjusted indices
+
         if normalizer is not None:
             normalizer_wrapper = NormalizerWrapper(normalizer, dropped_indices)
             transformed_data = [normalizer_wrapper.transform(X) for X in transformed_data]
             return transformed_data
-    
-    # Original normalization if no columns were dropped
+
     if normalizer is not None:
         transformed_data = [normalizer.transform(X) for X in transformed_data]
     

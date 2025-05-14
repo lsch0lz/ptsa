@@ -96,24 +96,19 @@ class LOSProbabilisticInference:
     def even_out_number_of_data_points(self, data):
         data_points, labels = data[0], data[1]
         self.logger.info("Number of Samples: %s", len(labels))
-        # Separate indices by class
         positive_indices = [i for i, label in enumerate(labels) if label == 1]
         negative_indices = [i for i, label in enumerate(labels) if label == 0]
         
         self.logger.info("Number of Positive Samples: %s", len(positive_indices))
         self.logger.info("Number of Negative Samples: %s", len(negative_indices))
-        # Determine the target number of samples (equal to the minority class size)
         target_size = min(len(positive_indices), len(negative_indices))
 
-        # Downsample the majority class
         sampled_positive_indices = random.sample(positive_indices, target_size)
         sampled_negative_indices = random.sample(negative_indices, target_size)
 
-        # Combine indices and shuffle
         balanced_indices = sampled_positive_indices + sampled_negative_indices
         random.shuffle(balanced_indices)
 
-        # Create the new balanced dataset
         balanced_data_points = [data_points[i] for i in balanced_indices]
         balanced_labels = [labels[i] for i in balanced_indices]
         self.logger.info("Number of Balanced Samples: %s", len(balanced_labels))
@@ -215,9 +210,7 @@ class LOSProbabilisticInference:
             model = self._load_model_probabilisitc()
         else:
             model = self._load_model_deterministic()
-        # Loss and Optimizer
 
-        # Final testing and metrics logging
         model.eval()
         all_predictions = []
         all_targets = []

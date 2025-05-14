@@ -100,31 +100,26 @@ class IHMModelInference:
     def _even_out_number_of_data_points(self, data):
         data_points, labels = data[0], data[1]
         logger.info("Number of Samples: %s", len(labels))
-        # Separate indices by class
         positive_indices = [i for i, label in enumerate(labels) if label == 1]
         negative_indices = [i for i, label in enumerate(labels) if label == 0]
         
         logger.info("Number of Positive Samples: %s", len(positive_indices))
         logger.info("Number of Negative Samples: %s", len(negative_indices))
-        # Determine the target number of samples (equal to the minority class size)
+
         target_size = min(len(positive_indices), len(negative_indices))
 
-        # Downsample the majority class
         sampled_positive_indices = random.sample(positive_indices, target_size)
         sampled_negative_indices = random.sample(negative_indices, target_size)
 
-        # Combine indices and shuffle
         balanced_indices = sampled_positive_indices + sampled_negative_indices
         random.shuffle(balanced_indices)
 
-        # Create the new balanced dataset
         balanced_data_points = [data_points[i] for i in balanced_indices]
         balanced_labels = [labels[i] for i in balanced_indices]
         logger.info("Number of Balanced Samples: %s", len(balanced_labels))
         return (balanced_data_points, balanced_labels)
     
     def load_test_data(self):
-        # Data loading and preprocessing
         all_reader = InHospitalMortalityReader(
             dataset_dir=os.path.join(self.data_path, 'train'), 
             listfile=os.path.join(self.data_path, 'train/listfile.csv'), 
@@ -141,7 +136,6 @@ class IHMModelInference:
 
         test_reader = InHospitalMortalityReader(dataset_dir=os.path.join(self.data_path, 'test'), listfile=os.path.join(self.data_path, 'test/listfile.csv'), period_length=48.0)
 
-        # Discretizer and Normalizer setup (similar to original script)
         discretizer = Discretizer(
             timestep=float(1.0), 
             store_masks=True, 
@@ -164,8 +158,7 @@ class IHMModelInference:
             "Glascow coma scale verbal response",
             "Glascow coma scale eye opening"
         ]
-        
-        # Load data
+
         train_raw_data = load_data(train_reader, discretizer, normalizer, False)
         val_raw_data = load_data(val_reader, discretizer, normalizer, False)
         test_raw_data = load_data(test_reader, discretizer, normalizer, False)

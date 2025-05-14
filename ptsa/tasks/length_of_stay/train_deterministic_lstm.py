@@ -69,7 +69,6 @@ elif args.model == "gru":
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"])
 
-# data loading
 all_data = LengthOfStayReader(dataset_dir=os.path.join(args.data, 'train'),
                                 listfile=os.path.join(args.data, 'train/listfile.csv'))
 

@@ -26,34 +26,15 @@ from ptsa.models.probabilistic.transformer import TransformerLOS
 
 
 def get_random_slice(data_length, batch_size, target_fraction=0.5):
-    """
-    Get random start and end indices for slicing data, ensuring:
-    1. The slice size is divisible by batch_size
-    2. The slice is not smaller than batch_size
-    3. The slice is approximately the target fraction of the data
-    
-    Args:
-        data_length (int): Total length of the dataset
-        batch_size (int): Batch size to ensure divisibility
-        target_fraction (float): Desired fraction of data to keep (default: 0.5)
-    
-    Returns:
-        tuple: (start_idx, end_idx) for slicing the data
-    """
-    # Ensure the target slice size is divisible by batch_size
     target_size = math.floor(data_length * target_fraction)
     adjusted_size = (target_size // batch_size) * batch_size
     
-    # Ensure we're not going below batch_size
     slice_size = max(adjusted_size, batch_size)
     
-    # Calculate maximum valid start index
     max_start = data_length - slice_size
     
-    # Get random start index that's divisible by batch_size
     valid_starts = list(range(0, max_start + 1, batch_size))
     if not valid_starts:
-        # If no valid starts found, return first possible slice
         return 0, batch_size
     
     start_idx = random.choice(valid_starts)
@@ -68,7 +49,6 @@ def nll_loss(mean, log_var, y):
 def objective(trial):
     wandb.finish()
 
-    # Initialize wandb run for this trial
     wandb.init(
         project=f"fixed_final_probabilistic_length_of_stay", 
         group=f"final_{args.model}",
@@ -98,8 +78,6 @@ def objective(trial):
                 {"d_model": 256, "nhead": 4},
                 {"d_model": 256, "nhead": 8}
             ]
-            
-            # Select one configuration
             config_idx = trial.suggest_categorical("model_config", list(range(len(configurations))))
             selected_config = configurations[config_idx]
             
@@ -141,7 +119,6 @@ def objective(trial):
         criterion = nll_loss
         optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"])
 
-        # data loading
         all_data = LengthOfStayReader(dataset_dir=os.path.join(args.data, 'train'),
                                         listfile=os.path.join(args.data, 'train/listfile.csv'))
 
@@ -239,7 +216,7 @@ def objective(trial):
                                     shuffle=False,
                                     partition=args.partition,
                                     columns_to_drop=columns_to_drop)
-        # Training loop
+
         print(f"Number of Steps in Train Data: {train_data_gen.steps}")
         print(f"Number of Steps in Validation Data: {val_data_gen.steps}")
         print(f"Number of Steps in Test Data: {test_data_gen.steps}")
@@ -270,8 +247,7 @@ def objective(trial):
                 total_loss += loss.item()
         
             avg_loss = total_loss / train_data_gen.steps
-            
-            # Evaluation
+
             model.eval()
             with torch.no_grad():
                 val_loss = 0
@@ -304,7 +280,6 @@ def objective(trial):
         wandb.log_artifact(args.model_name, name="uncertainty_model", type="model")
         model.load_state_dict(torch.load(args.model_name))
 
-        # Testing
         model.eval()
         all_predictions = []
         all_uncertainties = []
@@ -391,7 +366,6 @@ def main():
     
     # study = optuna.create_study(direction="maximize")
 
-    # Run the hyperparameter optimization
     study.optimize(objective, n_trials=args.num_trials)
 
     # Print the best trial
@@ -404,13 +378,11 @@ def main():
     for key, value in trial.params.items():
         print(f'    {key}: {value}')
 
-    # Optional: Save the best hyperparameters
     with open(os.path.join(args.output_dir, 'best_hyperparams.txt'), 'w') as f:
         f.write(f"Best RMSE: {trial.value}\n")
         for key, value in trial.params.items():
             f.write(f"{key}: {value}\n")
 
-    # Optional: Visualize hyperparameter importance
     optuna.visualization.plot_optimization_history(study)
     plt.savefig(os.path.join(args.output_dir, 'optimization_history.png'))
     optuna.visualization.plot_param_importances(study)

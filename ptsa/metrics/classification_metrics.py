@@ -15,40 +15,24 @@ def compute_classification_metrics(
     threshold: float = 0.5,
     uncertainties: np.ndarray = None
     ):
-    """
-    Compute various binary classification metrics.
-    
-    Args:
-        y_true: Ground truth binary labels (0 or 1)
-        y_pred_proba: Predicted probabilities for class 1
-        threshold: Decision threshold for converting probabilities to binary predictions
-        
-    Returns:
-        Dictionary containing various classification metrics
-    """
-    # Convert probabilities to binary predictions using threshold
+
     y_pred = (y_pred_proba >= threshold).astype(int)
-    
-    # Basic metrics
+
     accuracy = accuracy_score(y_true, y_pred)
     precision = precision_score(y_true, y_pred, zero_division=0)
     recall = recall_score(y_true, y_pred, zero_division=0)
     f1 = f1_score(y_true, y_pred, zero_division=0)
-    
-    # Probability-based metrics
+
     roc_auc = roc_auc_score(y_true, y_pred_proba)
     avg_precision = average_precision_score(y_true, y_pred_proba)
-    
-    # Calibration metrics
+
     brier = brier_score_loss(y_true, y_pred_proba)
     log_loss_value = log_loss(y_true, y_pred_proba)
-    
-    # Confusion matrix elements
+
     tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
     specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
     npv = tn / (tn + fn) if (tn + fn) > 0 else 0  # Negative Predictive Value
-    
-    # Additional derived metrics
+
     prevalence = np.mean(y_true)
     
     metrics = {
@@ -82,16 +66,6 @@ def compute_classification_metrics(
     return metrics
 
 def plot_roc_curve(y_true, y_pred_proba):
-    """
-    Plot ROC curve and compute AUC.
-    
-    Args:
-        y_true: Ground truth binary labels
-        y_pred_proba: Predicted probabilities
-        
-    Returns:
-        AUC score
-    """
     fpr, tpr, _ = roc_curve(y_true, y_pred_proba)
     roc_auc = auc(fpr, tpr)
     
@@ -109,23 +83,12 @@ def plot_roc_curve(y_true, y_pred_proba):
 
 
 def plot_precision_recall_curve(y_true, y_pred_proba):
-    """
-    Plot Precision-Recall curve and compute Average Precision.
-    
-    Args:
-        y_true: Ground truth binary labels
-        y_pred_proba: Predicted probabilities
-        
-    Returns:
-        Average precision score
-    """
     precision, recall, _ = precision_recall_curve(y_true, y_pred_proba)
     avg_precision = average_precision_score(y_true, y_pred_proba)
     
     plt.figure(figsize=(10, 8))
     plt.plot(recall, precision, color='blue', lw=2, label=f'PR curve (AP = {avg_precision:.3f})')
-    
-    # Calculate baseline based on class imbalance
+
     baseline = np.sum(y_true) / len(y_true)
     plt.axhline(y=baseline, color='red', linestyle='--', label=f'Baseline (prevalence = {baseline:.3f})')
     

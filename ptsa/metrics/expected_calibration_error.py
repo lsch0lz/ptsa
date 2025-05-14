@@ -3,44 +3,24 @@ import numpy as np
 from ptsa.tasks.in_hospital_mortality.inference_deterministic import IHMModelInference
 
 def compute_ece(y_true, y_pred, n_bins=10):
-    """
-    Compute Expected Calibration Error for binary classification.
-    
-    Args:
-        y_true: Array of true labels (0 or 1)
-        y_pred: Array of predicted probabilities (between 0 and 1)
-        n_bins: Number of bins to use for calculating calibration
-        
-    Returns:
-        ece: Expected Calibration Error
-        bin_confidences: Mean predicted probability for each bin
-        bin_accuracies: Mean actual accuracy for each bin
-        bin_counts: Number of predictions in each bin
-    """
-    
-    # Ensure inputs are numpy arrays
     y_true = np.array(y_true)
     y_pred = np.array(y_pred)
-    
-    # Create bins and assign predictions to them
+
     bins = np.linspace(0., 1. + 1e-8, n_bins + 1)
     binids = np.digitize(y_pred, bins) - 1
     
     bin_sums = np.zeros(n_bins)
     bin_true = np.zeros(n_bins)
     bin_counts = np.zeros(n_bins)
-    
-    # Accumulate statistics for each bin
+
     for i in range(len(y_pred)):
         bin_sums[binids[i]] += y_pred[i]
         bin_true[binids[i]] += y_true[i]
         bin_counts[binids[i]] += 1
-    
-    # Calculate mean accuracy and confidence for each bin
+
     bin_confidences = bin_sums / (bin_counts + 1e-8)
     bin_accuracies = bin_true / (bin_counts + 1e-8)
-    
-    # Calculate ECE
+
     ece = np.sum(np.abs(bin_accuracies - bin_confidences) * (bin_counts / len(y_pred)))
     
     return ece, bin_confidences, bin_accuracies, bin_counts

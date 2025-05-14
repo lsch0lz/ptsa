@@ -14,12 +14,12 @@ def calculate_bca_confidence_intervals(data, statistic_func, confidence_level=0.
     for _ in range(n_bootstraps):
         bootstrap_sample = np.random.choice(data, size=n, replace=True)
         bootstrap_stats.append(statistic_func(bootstrap_sample))
-    
+
     # Calculate bias correction factor
     observed_stat = statistic_func(data)
     prop_less = np.mean(np.array(bootstrap_stats) < observed_stat)
     z0 = stats.norm.ppf(prop_less)
-    
+
     # Calculate acceleration factor
     jackknife_stats = []
     for i in range(n):
@@ -29,7 +29,7 @@ def calculate_bca_confidence_intervals(data, statistic_func, confidence_level=0.
     num = np.sum((jackknife_mean - jackknife_stats) ** 3)
     den = 6 * (np.sum((jackknife_mean - jackknife_stats) ** 2)) ** 1.5
     a = num / (den + np.finfo(float).eps)  # Add small epsilon to prevent division by zero
-    
+
     # Calculate BCa intervals
     z_alpha = stats.norm.ppf((1 - confidence_level) / 2)
     z_1_alpha = stats.norm.ppf(1 - (1 - confidence_level) / 2)
@@ -43,23 +43,19 @@ def create_error_based_calibration_plot(y_true, predicted_means, predicted_varia
     """
     Create error-based calibration plot with custom aspect ratio and tight x-axis
     """
-    # Calculate errors
     errors = abs(y_true - predicted_means)
-    
-    # Sort by predicted uncertainty
+
     sorted_indices = np.argsort(predicted_variances)
     sorted_errors = errors[sorted_indices]
     sorted_variances = predicted_variances[sorted_indices]
-    
-    # Calculate bin size
+
     bin_size = len(y_true) // n_bins
     
     rmse_values = []
     rmv_values = []
     ci_lower = []
     ci_upper = []
-    
-    # Calculate RMSE and RMV for each bin
+
     for i in range(n_bins):
         start_idx = i * bin_size
         end_idx = start_idx + bin_size if i < n_bins - 1 else len(y_true)
@@ -80,65 +76,50 @@ def create_error_based_calibration_plot(y_true, predicted_means, predicted_varia
         ))
         ci_lower.append(ci[0])
         ci_upper.append(ci[1])
-    
-    # Convert to numpy arrays
+
     rmse_values = np.array(rmse_values)
     rmv_values = np.array(rmv_values)
     ci_lower = np.array(ci_lower)
     ci_upper = np.array(ci_upper)
-    
-    # Fit linear regression
+
     slope, intercept = np.polyfit(rmv_values, rmse_values, 1)
     r_squared = np.corrcoef(rmv_values, rmse_values)[0,1]**2
-    
-    # Create plot with rectangular size
+
     fig, ax = plt.subplots(figsize=(10, 6))
-    
-    # Plot confidence intervals
+
     ax.fill_between(rmv_values, ci_lower, ci_upper, alpha=0.2, color='blue',
                    label='95% Confidence Interval')
-    
-    # Plot calibration points
+
     ax.scatter(rmv_values, rmse_values, color='blue')
-    
-    # Set x-axis limit to max RMV value with small padding
+
     x_max = np.max(rmv_values) * 1.2  # 20% padding
-    y_max = max(np.max(rmse_values), x_max) * 1.2  # Make sure identity line is visible
+    y_max = max(np.max(rmse_values), x_max) * 1.2
     
     max_limit = max(np.max(rmv_values), np.max(rmse_values)) * 1.2
 
-    # Set axis limits
     ax.set_xlim(0, max_limit)
     ax.set_ylim(0, max_limit)
-    
-    # Plot fitted line using the x-axis range
+
     x_range = np.array([0, x_max])
     ax.plot(x_range, slope * x_range + intercept, 'r--', 
              label=f'R²={r_squared:.2f}')
-    
-    # Plot identity line
+
     ax.plot([0, max_limit], [0, max_limit], color="k", linestyle="--", linewidth=1, label='Identity Line')
 
-    # Customize plot
     ax.set_xlabel('RMV (Root Mean Variance)', fontsize=12, labelpad=10)
     ax.set_ylabel('RMSE (Root Mean Square Error)', fontsize=12, labelpad=10)
     ax.set_title('Error-based Calibration Plot', fontsize=14, pad=20)
     ax.legend(fontsize=10)
-    
-    # Add grid with better visibility
+
     ax.grid(True, alpha=0.3, linestyle='--')
-    
-    # Remove equal aspect ratio constraint
+
     ax.set_aspect('equal', adjustable='box')
 
-    # Add more tick marks with better spacing
     ax.xaxis.set_major_locator(MaxNLocator(10))
     ax.yaxis.set_major_locator(MaxNLocator(10))
-    
-    # Rotate x-axis labels for better readability
+
     plt.xticks(rotation=45, ha='right')
-    
-    # Adjust layout to prevent label cutoff
+
     plt.tight_layout()
     
     metrics = {
@@ -149,7 +130,6 @@ def create_error_based_calibration_plot(y_true, predicted_means, predicted_varia
     
     return fig, metrics
 
-# Example usage
 if __name__ == "__main__":
     config = {
             "input_size": 47,
@@ -185,7 +165,6 @@ if __name__ == "__main__":
     predicted_variances = np.array(predicted_variances).flatten()
     y_true = np.array(y_true).flatten()
     
-    # Sort predictions by uncertainty to create a clearer trend
     sort_idx = np.argsort(predicted_variances)
     y_true = y_true[sort_idx]
     predicted_means = predicted_means[sort_idx]

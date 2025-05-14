@@ -35,14 +35,12 @@ class TransformerLOS(nn.Module):
         
         self.dropout_rate = dropout
         
-        # Input normalization and projection
         self.input_norm = nn.LayerNorm(input_size)
         self.input_projection = nn.Linear(input_size, d_model)
         torch.nn.init.xavier_uniform_(self.input_projection.weight, gain=0.1)
         
         self.pos_encoder = PositionalEncoding(d_model, dropout=0.0)
         
-        # Custom encoder layer for MC dropout
         encoder_layer = self._create_encoder_layer(
             d_model=d_model,
             nhead=nhead,
@@ -56,14 +54,11 @@ class TransformerLOS(nn.Module):
             num_layers=num_layers
         )
         
-        # Shared feature processing
         self.final_norm = nn.LayerNorm(d_model)
-        
-        # Separate heads for mean and log variance
+
         self.fc_mean = nn.Linear(d_model, 1)
         self.fc_log_var = nn.Linear(d_model, 1)
-        
-        # Initialize output layers with smaller weights
+
         torch.nn.init.xavier_uniform_(self.fc_mean.weight, gain=0.1)
         torch.nn.init.xavier_uniform_(self.fc_log_var.weight, gain=0.1)
         
@@ -89,18 +84,14 @@ class TransformerLOS(nn.Module):
         src_mask: Optional[torch.Tensor] = None,
         src_key_padding_mask: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        # Input dropout
         # x = self._apply_dropout(src)
         
-        # Normalize and project input
         x = self.input_norm(src)
         x = self.input_projection(x) * math.sqrt(self.d_model)
         # x = self._apply_dropout(x)
         
-        # Positional encoding
         x = self.pos_encoder(x)
         
-        # Transformer encoding
         x = self.transformer_encoder(
             x,
             mask=src_mask,
@@ -108,14 +99,11 @@ class TransformerLOS(nn.Module):
         )
         # x = self._apply_dropout(x)
         
-        # Use last sequence element
         x = x[:, -1, :]
         
-        # Final shared processing
         x = self.final_norm(x)
         x = self._apply_dropout(x)
         
-        # Generate mean and log variance predictions
         mean = self.fc_mean(x).squeeze(-1)
         log_var = self.fc_log_var(x).squeeze(-1)
         
@@ -128,13 +116,6 @@ class TransformerLOS(nn.Module):
         src_mask: Optional[torch.Tensor] = None,
         src_key_padding_mask: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Perform Monte Carlo Dropout inference to estimate both epistemic and aleatoric uncertainty.
-        
-        Returns:
-            Tuple[Tensor, Tensor]: (mean predictions, total variance)
-                - total variance = epistemic uncertainty + aleatoric uncertainty
-        """
         self.train()  # Enable dropout
         
         predictions = []
@@ -162,16 +143,6 @@ class TransformerLOS(nn.Module):
         src_mask: Optional[torch.Tensor] = None,
         src_key_padding_mask: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        Get detailed uncertainty breakdown.
-        
-        Returns:
-            Tuple containing:
-            - mean predictions
-            - epistemic uncertainty
-            - aleatoric uncertainty
-            - total uncertainty
-        """
         self.train()
         
         predictions = []

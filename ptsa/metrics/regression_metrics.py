@@ -4,28 +4,14 @@ import numpy as np
 from ptsa.tasks.length_of_stay.inference_probabilistic import LOSProbabilisticInference
 
 def compute_regression_metrics(y_true, y_pred, y_variance=None):
-    """
-    Compute various regression metrics.
-    
-    Args:
-        y_true: Ground truth continuous values
-        y_pred: Predicted continuous values
-        y_variance: Predicted variance (for probabilistic models)
-        
-    Returns:
-        Dictionary containing various regression metrics
-    """
-    # Calculate basic metrics
     mse = np.mean((y_true - y_pred) ** 2)
     rmse = np.sqrt(mse)
     mae = np.mean(np.abs(y_true - y_pred))
-    
-    # Calculate R-squared (coefficient of determination)
+
     ss_total = np.sum((y_true - np.mean(y_true)) ** 2)
     ss_residual = np.sum((y_true - y_pred) ** 2)
     r_squared = 1 - (ss_residual / ss_total) if ss_total > 0 else 0
-    
-    # Create metrics dictionary
+
     metrics = {
         "mse": mse,
         "rmse": rmse,
@@ -34,11 +20,9 @@ def compute_regression_metrics(y_true, y_pred, y_variance=None):
     }
 
     if y_variance is not None:
-        # Avoid division by zero or negative variance
         epsilon = 1e-8
         safe_variance = np.maximum(y_variance, epsilon)
-        
-        # Calculate NLL for Gaussian distribution
+
         squared_error = (y_true - y_pred) ** 2
         nll = np.mean(squared_error / (2 * safe_variance) + 0.5 * np.log(2 * np.pi * safe_variance))
         metrics["nll"] = nll

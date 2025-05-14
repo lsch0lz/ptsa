@@ -35,7 +35,6 @@ class TransformerIHM(nn.Module):
         
         self.dropout_rate = dropout
         
-        # Input normalization and projection
         self.input_norm = nn.LayerNorm(input_size)
         self.input_projection = nn.Linear(input_size, d_model)
         torch.nn.init.xavier_uniform_(self.input_projection.weight, gain=0.1)
@@ -55,14 +54,11 @@ class TransformerIHM(nn.Module):
             num_layers=num_layers
         )
         
-        # Shared feature processing
         self.final_norm = nn.LayerNorm(d_model)
         
-        # Output layers for logits and log variance
         self.fc_logit = nn.Linear(d_model, 1)
         self.fc_log_var = nn.Linear(d_model, 1)
         
-        # Initialize output layers
         torch.nn.init.xavier_uniform_(self.fc_logit.weight, gain=0.1)
         torch.nn.init.xavier_uniform_(self.fc_log_var.weight, gain=0.1)
         
@@ -88,18 +84,14 @@ class TransformerIHM(nn.Module):
         src_mask: Optional[torch.Tensor] = None,
         src_key_padding_mask: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        # Input dropout
         x = self._apply_dropout(src)
         
-        # Normalize and project input
         x = self.input_norm(x)
         x = self.input_projection(x) * math.sqrt(self.d_model)
         # x = self._apply_dropout(x)
         
-        # Positional encoding
         x = self.pos_encoder(x)
         
-        # Transformer encoding
         x = self.transformer_encoder(
             x,
             mask=src_mask,
@@ -107,18 +99,14 @@ class TransformerIHM(nn.Module):
         )
         # x = self._apply_dropout(x)
         
-        # Use last sequence element
         x = x[:, -1, :]
         
-        # Final shared processing
         x = self.final_norm(x)
         x = self._apply_dropout(x)
         
-        # Generate logits and log variance
         logits = self.fc_logit(x).squeeze(-1)
         log_var = self.fc_log_var(x).squeeze(-1)
         
-        # Apply sigmoid and clamp probabilities
         proba = torch.clamp(torch.sigmoid(logits), min=1e-6, max=1-1e-6)
         
         return proba, log_var
@@ -130,9 +118,6 @@ class TransformerIHM(nn.Module):
         src_mask: Optional[torch.Tensor] = None,
         src_key_padding_mask: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Perform Monte Carlo Dropout inference for binary classification with uncertainty.
-        """
         self.train()  # Enable dropout
         
         probas = []
@@ -146,17 +131,13 @@ class TransformerIHM(nn.Module):
         
         probas = torch.stack(probas)
         mean_proba = probas.mean(dim=0)
-        
-        # Ensure final probabilities are valid
+
         mean_proba = torch.clamp(mean_proba, min=1e-6, max=1-1e-6)
         
-        # Epistemic uncertainty
         epistemic_uncertainty = probas.var(dim=0)
-        
-        # Aleatoric uncertainty
+
         aleatoric_uncertainty = torch.exp(torch.stack(log_variances).mean(dim=0))
-        
-        # Total uncertainty
+
         total_uncertainty = epistemic_uncertainty + aleatoric_uncertainty
         
         return mean_proba, total_uncertainty

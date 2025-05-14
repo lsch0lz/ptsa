@@ -52,34 +52,15 @@ args = parser.parse_args()
 
 
 def get_random_slice(data_length, batch_size, target_fraction=0.5):
-    """
-    Get random start and end indices for slicing data, ensuring:
-    1. The slice size is divisible by batch_size
-    2. The slice is not smaller than batch_size
-    3. The slice is approximately the target fraction of the data
-    
-    Args:
-        data_length (int): Total length of the dataset
-        batch_size (int): Batch size to ensure divisibility
-        target_fraction (float): Desired fraction of data to keep (default: 0.5)
-    
-    Returns:
-        tuple: (start_idx, end_idx) for slicing the data
-    """
-    # Ensure the target slice size is divisible by batch_size
     target_size = math.floor(data_length * target_fraction)
     adjusted_size = (target_size // batch_size) * batch_size
     
-    # Ensure we're not going below batch_size
     slice_size = max(adjusted_size, batch_size)
     
-    # Calculate maximum valid start index
     max_start = data_length - slice_size
     
-    # Get random start index that's divisible by batch_size
     valid_starts = list(range(0, max_start + 1, batch_size))
     if not valid_starts:
-        # If no valid starts found, return first possible slice
         return 0, batch_size
     
     start_idx = random.choice(valid_starts)
@@ -100,9 +81,9 @@ config = {
 
 transformer_config = {
     "input_size": 76,
-    "d_model": 64,                 # Transformer embedding dimension
-    "nhead": 4,                     # Number of attention heads
-    "num_layers": 2,               # Number of transformer layers
+    "d_model": 64,
+    "nhead": 4,
+    "num_layers": 2,
     "dropout": 0.1
 }
 
