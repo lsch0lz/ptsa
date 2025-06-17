@@ -1,6 +1,6 @@
 # Probabilistic Time Series Analysis (PTSA)
 
-This projects several deterministic and probabilistic models to classify In-hospital Mortality and Length-of-Stay Prediction.
+This project contains several deterministic and probabilistic Neural Networks to classify In-hospital Mortality and Length-of-Stay Prediction.
 
 ## Features
 
