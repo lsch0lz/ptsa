@@ -1,6 +1,6 @@
 # Probabilistic Time Series Analysis (PTSA)
 
-This package provides several models and benchmarks to analyze your time series in a probabilistic fashion.
+This projects several deterministic and probabilistic models to classify In-hospital Mortality and Length-of-Stay Prediction.
 
 ## Features
 
